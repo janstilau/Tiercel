@@ -47,7 +47,7 @@ public class Task<TaskType>: NSObject, Codable {
         try container.encode(status.rawValue, forKey: .status)
         try container.encodeIfPresent(verificationCode, forKey: .verificationCode)
         try container.encode(verificationType.rawValue, forKey: .verificationType)
-        try container.encode(validation.rawValue, forKey: .validation)
+        try container.encode(validationResult.rawValue, forKey: .validation)
         if let error = error {
             let errorData: Data
             if #available(iOS 11.0, *) {
@@ -146,6 +146,9 @@ extension Task {
         var progressExecuter: Executer<TaskType>?
         var successExecuter: Executer<TaskType>?
         var failureExecuter: Executer<TaskType>?
+        /*
+         Suspend, Cancle, Remove 操作的时候, 会给里面赋值.
+         */
         var controlExecuter: Executer<TaskType>?
         var completionExecuter: Executer<TaskType>?
         var validateExecuter: Executer<TaskType>?
@@ -191,7 +194,7 @@ extension Task {
         }
     }
     
-    public internal(set) var validation: Validation {
+    public internal(set) var validationResult: Validation {
         get { protectedState.wrappedValue.validation }
         set { protectedState.write { $0.validation = newValue } }
     }

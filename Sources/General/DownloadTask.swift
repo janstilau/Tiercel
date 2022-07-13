@@ -1,13 +1,10 @@
 import UIKit
 
 public class DownloadTask: Task<DownloadTask> {
-    
     private enum CodingKeys: CodingKey {
         case resumeData
         case response
     }
-    
-    private var acceptableStatusCodes: Range<Int> { return 200..<300 }
     
     private var _sessionTask: URLSessionDownloadTask? {
         willSet {
@@ -18,28 +15,6 @@ public class DownloadTask: Task<DownloadTask> {
         }
     }
     
-    internal var sessionTask: URLSessionDownloadTask? {
-        get { protectedDownloadState.read { _ in _sessionTask }}
-        set { protectedDownloadState.write { _ in _sessionTask = newValue }}
-    }
-    
-    
-    public private(set) var response: HTTPURLResponse? {
-        get { protectedDownloadState.wrappedValue.response }
-        set { protectedDownloadState.write { $0.response = newValue } }
-    }
-    
-    
-    public var filePath: String {
-        return cache.filePath(fileName: fileName)!
-    }
-    
-    public var pathExtension: String? {
-        let pathExtension = (filePath as NSString).pathExtension
-        return pathExtension.isEmpty ? nil : pathExtension
-    }
-    
-    
     private struct DownloadState {
         var resumeData: Data? {
             didSet {
@@ -48,27 +23,12 @@ public class DownloadTask: Task<DownloadTask> {
             }
         }
         var response: HTTPURLResponse?
+        
+        // 下面的两个属性, 不进行序列化.
         var tmpFileName: String?
         var shouldValidateFile: Bool = false
     }
-    
     private let protectedDownloadState: Protected<DownloadState> = Protected(DownloadState())
-    
-    
-    private var resumeData: Data? {
-        get { protectedDownloadState.wrappedValue.resumeData }
-        set { protectedDownloadState.write { $0.resumeData = newValue } }
-    }
-    
-    internal var tmpFileName: String? {
-        protectedDownloadState.wrappedValue.tmpFileName
-    }
-    
-    private var shouldValidateFile: Bool {
-        get { protectedDownloadState.wrappedValue.shouldValidateFile }
-        set { protectedDownloadState.write { $0.shouldValidateFile = newValue } }
-    }
-    
     
     internal init(_ url: URL,
                   headers: [String: String]? = nil,
@@ -90,6 +50,7 @@ public class DownloadTask: Task<DownloadTask> {
     
     public override func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        
         // 通过 SuperEncoder 的方式, 其实是使得 Super 的内容, 和 JSON 中的 Super 字段绑定在了一起.
         let superEncoder = container.superEncoder()
         try super.encode(to: superEncoder)
@@ -120,25 +81,59 @@ public class DownloadTask: Task<DownloadTask> {
         }
     }
     
-    
     deinit {
         sessionTask?.removeObserver(self, forKeyPath: "currentRequest")
         NotificationCenter.default.removeObserver(self)
     }
     
     @objc private func fixDelegateMethodError() {
+        // 理由呢???
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             self.sessionTask?.suspend()
             self.sessionTask?.resume()
         }
     }
     
-    
     internal override func execute(_ executer: Executer<DownloadTask>?) {
         executer?.execute(self)
     }
+}
+
+extension DownloadTask {
+    private var acceptableStatusCodes: Range<Int> { return 200..<300 }
     
+    internal var sessionTask: URLSessionDownloadTask? {
+        get { protectedDownloadState.read { _ in _sessionTask }}
+        set { protectedDownloadState.write { _ in _sessionTask = newValue }}
+    }
     
+    public private(set) var response: HTTPURLResponse? {
+        get { protectedDownloadState.wrappedValue.response }
+        set { protectedDownloadState.write { $0.response = newValue } }
+    }
+    
+    public var filePath: String {
+        return cache.filePath(fileName: fileName)!
+    }
+    
+    public var pathExtension: String? {
+        let pathExtension = (filePath as NSString).pathExtension
+        return pathExtension.isEmpty ? nil : pathExtension
+    }
+    
+    private var resumeData: Data? {
+        get { protectedDownloadState.wrappedValue.resumeData }
+        set { protectedDownloadState.write { $0.resumeData = newValue } }
+    }
+    
+    internal var tmpFileName: String? {
+        protectedDownloadState.wrappedValue.tmpFileName
+    }
+    
+    private var shouldValidateFile: Bool {
+        get { protectedDownloadState.wrappedValue.shouldValidateFile }
+        set { protectedDownloadState.write { $0.shouldValidateFile = newValue } }
+    }
 }
 
 
@@ -148,8 +143,12 @@ extension DownloadTask {
     internal func download() {
         cache.createDirectory()
         guard let manager = manager else { return }
+        
         switch status {
         case .waiting, .suspended, .failed:
+            // 只有下载完成之后, 才会把文件移交过去.
+            // 所以, fileExist 一定是下载成功了.
+            // 之所以会有这种情况, 是因为可能会有重复的下载任务
             if cache.fileExists(fileName: fileName) {
                 prepareForDownload(fileExists: true)
             } else {
@@ -192,12 +191,14 @@ extension DownloadTask {
                 progress.totalUnitCount = length
             }
             executeControl()
+            // 在, 完成了意向任务之后, 主动调用调度算法.
             operationQueue.async {
                 self.didComplete(.local)
             }
         } else {
             if let resumeData = resumeData,
                cache.retrieveTmpFile(tmpFileName) {
+                // retrieveTmpFile 中, 会尝试进行已经下载数据的恢复.
                 if #available(iOS 10.2, *) {
                     sessionTask = session?.downloadTask(withResumeData: resumeData)
                 } else if #available(iOS 10.0, *) {
@@ -206,7 +207,9 @@ extension DownloadTask {
                     sessionTask = session?.downloadTask(withResumeData: resumeData)
                 }
             } else {
+                // 没有 resume 的数据, 直接重新下.
                 var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 0)
+                // header 的作用, 在这里被用到了.
                 if let headers = headers {
                     request.allHTTPHeaderFields = headers
                 }
@@ -214,7 +217,7 @@ extension DownloadTask {
                 progress.completedUnitCount = 0
                 progress.totalUnitCount = 0
             }
-            // 真正的, 进行下载任务的开启. 
+            // 真正的, 进行下载任务的开启.
             progress.setUserInfoObject(progress.completedUnitCount, forKey: .fileCompletedCountKey)
             sessionTask?.resume()
             manager?.maintainTasks(with: .appendRunningTasks(self))
@@ -222,7 +225,6 @@ extension DownloadTask {
             executeControl()
         }
     }
-    
     
     internal func suspend(onMainQueue: Bool = true, handler: Handler<DownloadTask>? = nil) {
         guard status == .running || status == .waiting else { return }
@@ -252,8 +254,6 @@ extension DownloadTask {
         }
     }
     
-    
-    
     internal func remove(completely: Bool = false, onMainQueue: Bool = true, handler: Handler<DownloadTask>? = nil) {
         isRemoveCompletely = completely
         controlExecuter = Executer(onMainQueue: onMainQueue, handler: handler)
@@ -268,11 +268,10 @@ extension DownloadTask {
         }
     }
     
-    
     internal func update(_ newHeaders: [String: String]? = nil, newFileName: String? = nil) {
         headers = newHeaders
         if let newFileName = newFileName,
-            !newFileName.isEmpty {
+           !newFileName.isEmpty {
             cache.updateFileName(filePath, newFileName)
             fileName = newFileName
         }
@@ -288,28 +287,27 @@ extension DownloadTask {
         
         guard let verificationCode = verificationCode else { return }
         
-        FileChecksumHelper.validateFile(filePath, code: verificationCode, type: verificationType) { [weak self] (result) in
+        FileChecksumHelper.validateFile(filePath, code: verificationCode, type: verificationType) {
+            [weak self] (result) in
             guard let self = self else { return }
+            
             self.shouldValidateFile = false
             if case let .failure(error) = result {
-                self.validation = .incorrect
+                self.validationResult = .incorrect
                 self.manager?.log(.error("file validation failed, url: \(self.url)", error: error))
             } else {
-                self.validation = .correct
+                self.validationResult = .correct
                 self.manager?.log(.downloadTask("file validation successful", task: self))
             }
             self.manager?.storeTasks()
             validateHandler.execute(self)
         }
     }
-    
 }
-
 
 
 // MARK: - status handle
 extension DownloadTask {
-    
     private func didCancelOrRemove() {
         // 把预操作的状态改成完成操作的状态
         if status == .willCancel {
@@ -319,20 +317,24 @@ extension DownloadTask {
             status = .removed
         }
         cache.remove(self, completely: isRemoveCompletely)
-        
         manager?.didCancelOrRemove(self)
     }
     
-    
+    // FromRunning 指的是, 从正在运行的网络任务中成功了.
+    // 如果是本地缓存中, 则是 false.
     internal func succeeded(fromRunning: Bool, immediately: Bool) {
         if endDate == 0 {
             protectedState.write {
+                // 成功了, 进行完成事件的赋值.
                 $0.endDate = Date().timeIntervalSince1970
                 $0.timeRemaining = 0
             }
         }
+        // 进行状态的改变.
         status = .succeeded
+        // 进行完成进度的改变.
         progress.completedUnitCount = progress.totalUnitCount
+        // 完成进度回调. 使用 Executer 来执行, 因为里面有线程回调.
         progressExecuter?.execute(self)
         if immediately {
             executeCompletion(true)
@@ -342,7 +344,6 @@ extension DownloadTask {
         manager?.determineStatus(fromRunningTask: fromRunning)
     }
     
-    
     private func determineStatus(with interruptType: InterruptType) {
         var fromRunning = true
         switch interruptType {
@@ -350,6 +351,7 @@ extension DownloadTask {
             self.error = error
             var tempStatus = status
             if let resumeData = (error as NSError).userInfo[NSURLSessionDownloadTaskResumeData] as? Data {
+                // 在这里, 进行了 ResumeData 的存储动作.
                 self.resumeData = ResumeDataHelper.handleResumeData(resumeData)
                 cache.storeTmpFile(tmpFileName)
             }
@@ -402,18 +404,23 @@ extension DownloadTask {
             }
             if verificationCode == code &&
                 verificationType == type &&
-                self.validation != .unkown {
+                self.validationResult != .unkown {
+                // 这代表的是, 已经验证过了.
                 self.shouldValidateFile = false
             } else {
+                // 更换了验证的方式, 对验证的方式进行存储.
                 self.shouldValidateFile = true
                 self.protectedState.write {
                     $0.verificationCode = code
                     $0.verificationType = type
                 }
+                // 这种, 原子操作到一个文件列表中, 一个文件信息的更改, 就是整体的一个操作.
                 self.manager?.storeTasks()
             }
+            // ValidateFile 这段代码, 最终还是添加逻辑到对应的时间节点中, 然后在对应的时候, 取出相应的节点, 进行逻辑回调的触发.
             self.validateExecuter = Executer(onMainQueue: onMainQueue, handler: handler)
             if self.status == .succeeded {
+                // 如果, 当前的状态已经成功了, 直接触发.
                 self.validateFile()
             }
         }
@@ -421,6 +428,7 @@ extension DownloadTask {
     }
     
     private func executeCompletion(_ isSucceeded: Bool) {
+        // Complete 的优先级最高.
         if let completionExecuter = completionExecuter {
             completionExecuter.execute(self)
         } else if isSucceeded {
@@ -436,7 +444,6 @@ extension DownloadTask {
         controlExecuter = nil
     }
 }
-
 
 
 // MARK: - KVO
@@ -465,11 +472,13 @@ extension DownloadTask {
         
     }
     
+    // timeRemaining 的多少, 是根据 Speed 以及剩余量来完成的.
+    // 明确的写出一个 Update 的函数来, 使得某个属性的修改, 有了一个可以追踪的点. 
     private func updateTimeRemaining(_ speed: Int64) {
         var timeRemaining: Double
         if speed != 0 {
             timeRemaining = (Double(progress.totalUnitCount) - Double(progress.completedUnitCount)) / Double(speed)
-            if timeRemaining >= 0.8 && timeRemaining < 1 {
+            if 0.8 <= timeRemaining && timeRemaining < 1 {
                 timeRemaining += 1
             }
         } else {
@@ -500,15 +509,15 @@ extension DownloadTask {
         else { return }
         cache.storeFile(at: location, to: URL(fileURLWithPath: filePath))
         cache.removeTmpFile(tmpFileName)
-        
     }
     
     internal func didComplete(_ type: CompletionType) {
         switch type {
         case .local:
-            
+            // 本地就已经有了下载的文件了.
             switch status {
-            case .willSuspend,.willCancel, .willRemove:
+            case .willSuspend, .willCancel, .willRemove:
+                // 在修改为以上的状态之后, 会触发 didComplete 方法.
                 determineStatus(with: .manual(false))
             case .running:
                 succeeded(fromRunning: false, immediately: true)
@@ -516,12 +525,15 @@ extension DownloadTask {
                 return
             }
             
+            // 这种场景, 仅仅会在 Session 的 Delegate 中出现.
+            // ResumeData 的数据, 也是从 Error 中获取出来的.
         case let .network(task, error):
             manager?.maintainTasks(with: .removeRunningTasks(self))
             sessionTask = nil
             
             switch status {
             case .willCancel, .willRemove:
+                // cancel, remove, 不会直接进行数据的操作, 而是等待 delegate 方法, 在 delegate 方法的回调中, 统一进行数据的修改. s
                 determineStatus(with: .manual(true))
                 return
             case .willSuspend, .running:

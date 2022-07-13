@@ -41,6 +41,7 @@ extension SessionDelegate: URLSessionDownloadDelegate {
     // 下载失败的回调.
     public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let manager = manager else { return }
+        
         if let currentURL = task.currentRequest?.url {
             guard let downloadTask = manager.mapTask(currentURL) else {
                 manager.log(.error("urlSession(_:task:didCompleteWithError:)", error: TiercelError.fetchDownloadTaskFailed(url: currentURL)))

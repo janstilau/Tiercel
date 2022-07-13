@@ -1,8 +1,7 @@
 import Foundation
 
-
+// 这是一个工具类, 提供了类似下载文件的签名验证的功能 .
 public enum FileChecksumHelper {
-    
     public enum VerificationType : Int {
         case md5
         case sha1
@@ -10,6 +9,7 @@ public enum FileChecksumHelper {
         case sha512
     }
     
+    // 在运转的流程过程中, 出现的任何错误, 都使用 Error 进行了定义. 这让外界的使用者, 有了更好地使用策略.
     public enum FileVerificationError: Error {
         case codeEmpty
         case codeMismatch(code: String)
@@ -19,7 +19,6 @@ public enum FileChecksumHelper {
     
     private static let ioQueue: DispatchQueue = DispatchQueue(label: "com.Tiercel.FileChecksumHelper.ioQueue",
                                                               attributes: .concurrent)
-    
     
     public static func validateFile(_ filePath: String,
                                     code: String,
@@ -49,6 +48,7 @@ public enum FileChecksumHelper {
                 case .sha512:
                     string = data.tr.sha512
                 }
+                // 根据, 不同的 Type, 来获取不同的签名值, 然后进行字符串的比较. 
                 let isCorrect = string.lowercased() == code.lowercased()
                 if isCorrect {
                     completion(.success(true))

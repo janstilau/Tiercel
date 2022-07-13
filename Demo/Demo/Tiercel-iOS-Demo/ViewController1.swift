@@ -56,7 +56,7 @@ class ViewController1: UIViewController {
             }
         }.validateFile(code: "9e2a3650530b563da297c9246acaad5c", type: .md5) { [weak self] task in
             self?.updateViews(task)
-            if task.validation == .correct {
+            if task.validationResult == .correct {
                 // 文件正确
             } else {
                 // 文件错误
@@ -73,7 +73,7 @@ class ViewController1: UIViewController {
         startDateLabel.text = "开始时间： \(task.startDateString)"
         endDateLabel.text = "结束时间： \(task.endDateString)"
         var validation: String
-        switch task.validation {
+        switch task.validationResult {
         case .unkown:
             validationLabel.textColor = UIColor.blue
             validation = "未知"
@@ -100,7 +100,7 @@ class ViewController1: UIViewController {
             }
         }.validateFile(code: "9e2a3650530b563da297c9246acaad5c", type: .md5) { [weak self] (task) in
             self?.updateViews(task)
-            if task.validation == .correct {
+            if task.validationResult == .correct {
                 // 文件正确
             } else {
                 // 文件错误

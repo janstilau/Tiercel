@@ -34,7 +34,10 @@ public class Cache {
     ///   - downloadPath: 存放用于DownloadTask持久化的数据，默认提供的downloadTmpPath、downloadFilePath也是在里面
     ///   - downloadTmpPath: 存放下载中的临时文件
     ///   - downloadFilePath: 存放下载完成后的文件
-    public init(_ identifier: String, downloadPath: String? = nil, downloadTmpPath: String? = nil, downloadFilePath: String? = nil) {
+    public init(_ identifier: String,
+                downloadPath: String? = nil,
+                downloadTmpPath: String? = nil,
+                downloadFilePath: String? = nil) {
         self.identifier = identifier
         
         let ioQueueName = "com.Tiercel.Cache.ioQueue.\(identifier)"
@@ -44,20 +47,17 @@ public class Cache {
         
         let cacheName = "com.Daniels.Tiercel.Cache.\(identifier)"
         
+        // 这个东西, 就是在外界没有传入下载地址的时候, 当做 Download 的默认值.
         let diskCachePath = Cache.defaultDiskCachePathClosure(cacheName)
         
-        let path = downloadPath ?? (diskCachePath as NSString).appendingPathComponent("Downloads")
-        
-        self.downloadPath = path
-        
-        self.downloadTmpPath = downloadTmpPath ?? (path as NSString).appendingPathComponent("Tmp")
-        
-        self.downloadFilePath = downloadFilePath ?? (path as NSString).appendingPathComponent("File")
+        let downloadPath = downloadPath ?? (diskCachePath as NSString).appendingPathComponent("Downloads")
+        self.downloadPath = downloadPath
+        self.downloadTmpPath = downloadTmpPath ?? (downloadPath as NSString).appendingPathComponent("Tmp")
+        self.downloadFilePath = downloadFilePath ?? (downloadPath as NSString).appendingPathComponent("File")
         
         createDirectory()
-        
+        // 第一次看到, userInfo 真正的被使用到了
         decoder.userInfo[.cache] = self
-        
     }
     
     public func invalidate() {
@@ -139,8 +139,6 @@ extension Cache {
         return fileManager.fileExists(atPath: path)
     }
     
-    
-    
     public func clearDiskCache(onMainQueue: Bool = true, handler: Handler<Cache>? = nil) {
         ioQueue.async {
             guard self.fileManager.fileExists(atPath: self.downloadPath) else { return }
@@ -153,6 +151,7 @@ extension Cache {
             }
             self.createDirectory()
             if let handler = handler {
+                // 这里, 专门定义一个 Executer, 其实是为了线程调度.
                 Executer(onMainQueue: onMainQueue, handler: handler).execute(self)
             }
         }
@@ -162,7 +161,10 @@ extension Cache {
 
 // MARK: - retrieve
 extension Cache {
+    // 恢复, 所有存储起来的下载任务.
+    // 这是在 Session 初始化的时候需要进行的. 要把所有的下载任务, 添加到 Session 的队列中去.
     internal func retrieveAllTasks() -> [DownloadTask] {
+        // 因为这是一个同步函数, 所以这里选择了 sync.
         return ioQueue.sync {
             let path = (downloadPath as NSString).appendingPathComponent("\(identifier)_Tasks.plist")
             if fileManager.fileExists(atPath: path) {
@@ -190,6 +192,7 @@ extension Cache {
     internal func retrieveTmpFile(_ tmpFileName: String?) -> Bool {
         return ioQueue.sync {
             guard let tmpFileName = tmpFileName, !tmpFileName.isEmpty else { return false }
+            
             let backupFilePath = (downloadTmpPath as NSString).appendingPathComponent(tmpFileName)
             let originFilePath = (NSTemporaryDirectory() as NSString).appendingPathComponent(tmpFileName)
             let backupFileExists = fileManager.fileExists(atPath: backupFilePath)
@@ -216,10 +219,7 @@ extension Cache {
             }
             return true
         }
-        
     }
-    
-    
 }
 
 
@@ -257,6 +257,7 @@ extension Cache {
         }
     }
     
+    // 存储已经下载的临时文件. 
     internal func storeTmpFile(_ tmpFileName: String?) {
         ioQueue.sync {
             guard let tmpFileName = tmpFileName, !tmpFileName.isEmpty else { return }

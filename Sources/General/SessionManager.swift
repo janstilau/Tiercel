@@ -17,7 +17,7 @@ public class SessionManager {
     public let identifier: String
     
     public var completionHandler: (() -> Void)?
-    
+     
     public var configuration: SessionConfiguration {
         get { protectedState.wrappedValue.configuration }
         set {
@@ -201,6 +201,7 @@ public class SessionManager {
         let bundleIdentifier = Bundle.main.bundleIdentifier ?? "com.Daniels.Tiercel"
         self.identifier = "\(bundleIdentifier).\(identifier)"
         protectedState = Protected(
+            // 这个 Logger 可以自定义话, 这也是面向抽象编程的好处.
             State(logger: logger ?? Logger(identifier: "\(bundleIdentifier).\(identifier)", option: .default),
                   configuration: configuration)
         )
@@ -238,7 +239,14 @@ public class SessionManager {
     
     private func createSession(_ completion: (() -> ())? = nil) {
         guard shouldCreatSession else { return }
+        
         // 最为重要的部分, 使用 background 进行了下载的动作.
+        /*
+         Use this method to initialize a configuration object suitable for transferring data files while the app runs in the background.
+         A session configured with this object hands control of the transfers over to the system, which handles the transfers in a separate process. In iOS, this configuration makes it possible for transfers to continue even when the app itself is suspended or terminated.
+         If an iOS app is terminated by the system and relaunched, the app can use the same identifier to create a new configuration object and session and to retrieve the status of transfers that were in progress at the time of termination. This behavior applies only for normal termination of the app by the system. If the user terminates the app from the multitasking screen, the system cancels all of the session’s background transfers. In addition, the system does not automatically relaunch apps that were force quit by the user. The user must explicitly relaunch the app before transfers can begin again.
+         You can configure an background session to schedule transfers at the discretion of the system for optimal performance using the isDiscretionary property. When transferring large amounts of data, you are encouraged to set the value of this property to true. For an example of using the background configuration, see Downloading Files in the Background.
+         */
         let sessionConfiguration = URLSessionConfiguration.background(withIdentifier: identifier)
         sessionConfiguration.timeoutIntervalForRequest = configuration.timeoutIntervalForRequest
         sessionConfiguration.httpMaximumConnectionsPerHost = 100000
@@ -249,6 +257,7 @@ public class SessionManager {
         }
         let sessionDelegate = SessionDelegate()
         sessionDelegate.manager = self
+        // 网络请求相关的 Queue, 都是串行的.
         let delegateQueue = OperationQueue(maxConcurrentOperationCount: 1,
                                            underlyingQueue: operationQueue,
                                            name: "com.Tiercel.SessionManager.delegateQueue")
@@ -267,8 +276,6 @@ public class SessionManager {
 
 // MARK: - download
 extension SessionManager {
-    
-    
     /// 开启一个下载任务
     ///
     /// - Parameters:
@@ -285,6 +292,7 @@ extension SessionManager {
         do {
             let validURL = try url.asURL()
             var task: DownloadTask!
+            
             operationQueue.sync {
                 task = fetchTask(validURL)
                 if let task = task {
@@ -305,6 +313,7 @@ extension SessionManager {
             }
             return task
         } catch {
+            // 在内层函数的设计的时候, 使用 throw 的机制, 然后在对外的接口里面, 使用 optional 的设计.
             log(.error("create dowloadTask failed", error: error))
             return nil
         }
@@ -751,6 +760,7 @@ extension SessionManager {
         cache.storeTasks(tasks)
     }
     
+    // DownloadTask 里面, 会触发 Manager 的 Schedule 的操作.
     internal func determineStatus(fromRunningTask: Bool) {
         if isControlNetworkActivityIndicator {
             DispatchQueue.tr.executeOnMain {

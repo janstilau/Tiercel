@@ -87,6 +87,7 @@ final public class Protected<T> {
     }
 }
 
+// Debouncer 的含义是, 原来的取消, 用新的.
 final public class Debouncer {
     
     private let lock = UnfairLock()

@@ -26,7 +26,9 @@ public struct Logger: Logable {
     public var option: LogOption
     
     public func log(_ type: LogType) {
+        // 如果不需要 Log, 直接这里改动就好了,
         guard option == .default else { return }
+        
         var strings = ["************************ TiercelLog ************************"]
         strings.append("identifier    :  \(identifier)")
         switch type {
