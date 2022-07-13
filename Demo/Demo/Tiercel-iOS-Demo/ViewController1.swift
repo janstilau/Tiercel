@@ -9,8 +9,9 @@
 import UIKit
 import Tiercel
 
+// VC 里面的逻辑很简单, 因为, 所有的逻辑, 都藏到了 Tiercel 的内部中了.
 class ViewController1: UIViewController {
-
+    
     @IBOutlet weak var speedLabel: UILabel!
     @IBOutlet weak var progressLabel: UILabel!
     @IBOutlet weak var progressView: UIProgressView!
@@ -18,26 +19,25 @@ class ViewController1: UIViewController {
     @IBOutlet weak var startDateLabel: UILabel!
     @IBOutlet weak var endDateLabel: UILabel!
     @IBOutlet weak var validationLabel: UILabel!
-
-
-//    lazy var URLString = "https://officecdn-microsoft-com.akamaized.net/pr/C1297A47-86C4-4C1F-97FA-950631F94777/OfficeMac/Microsoft_Office_2016_16.10.18021001_Installer.pkg"
+    
+    //    lazy var URLString = "https://officecdn-microsoft-com.akamaized.net/pr/C1297A47-86C4-4C1F-97FA-950631F94777/OfficeMac/Microsoft_Office_2016_16.10.18021001_Installer.pkg"
     lazy var URLString = "http://dldir1.qq.com/qqfile/QQforMac/QQ_V4.2.4.dmg"
     var sessionManager = appDelegate.sessionManager1
-
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         
         sessionManager.tasks.safeObject(at: 0)?.progress { [weak self] (task) in
-            self?.updateUI(task)
+            self?.updateViews(task)
         }.completion { [weak self] task in
-            self?.updateUI(task)
+            self?.updateViews(task)
             if task.status == .succeeded {
                 // 下载成功
             } else {
                 // 其他状态
             }
         }.validateFile(code: "9e2a3650530b563da297c9246acaad5c", type: .md5) { [weak self] task in
-            self?.updateUI(task)
+            self?.updateViews(task)
             if task.validation == .correct {
                 // 文件正确
             } else {
@@ -45,8 +45,8 @@ class ViewController1: UIViewController {
             }
         }
     }
-
-    private func updateUI(_ task: DownloadTask) {
+    
+    private func updateViews(_ task: DownloadTask) {
         let per = task.progress.fractionCompleted
         progressLabel.text = "progress： \(String(format: "%.2f", per * 100))%"
         progressView.observedProgress = task.progress
@@ -70,17 +70,18 @@ class ViewController1: UIViewController {
     }
     
     @IBAction func start(_ sender: UIButton) {
+        // 这种, 链式调用的结果, 应该是和其他的项目中学习过来的.
         sessionManager.download(URLString)?.progress { [weak self] (task) in
-            self?.updateUI(task)
+            self?.updateViews(task)
         }.completion { [weak self] task in
-            self?.updateUI(task)
+            self?.updateViews(task)
             if task.status == .succeeded {
                 // 下载成功
             } else {
                 // 其他状态
             }
         }.validateFile(code: "9e2a3650530b563da297c9246acaad5c", type: .md5) { [weak self] (task) in
-            self?.updateUI(task)
+            self?.updateViews(task)
             if task.validation == .correct {
                 // 文件正确
             } else {
@@ -88,20 +89,20 @@ class ViewController1: UIViewController {
             }
         }
     }
-
+    
     @IBAction func suspend(_ sender: UIButton) {
         sessionManager.suspend(URLString)
     }
-
-
+    
+    
     @IBAction func cancel(_ sender: UIButton) {
         sessionManager.cancel(URLString)
     }
-
+    
     @IBAction func deleteTask(_ sender: UIButton) {
         sessionManager.remove(URLString, completely: false)
     }
-
+    
     @IBAction func clearDisk(_ sender: Any) {
         sessionManager.cache.clearDiskCache()
     }

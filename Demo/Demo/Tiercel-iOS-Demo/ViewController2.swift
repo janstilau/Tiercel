@@ -33,7 +33,7 @@ class ViewController2: BaseViewController {
 
         setupManager()
 
-        updateUI()
+        updateViews()
         tableView.reloadData()
         
     }
@@ -51,7 +51,7 @@ extension ViewController2 {
             guard let self = self else { return }
             let index = self.sessionManager.tasks.count - 1
             self.tableView.insertRows(at: [IndexPath(row: index, section: 0)], with: .automatic)
-            self.updateUI()
+            self.updateViews()
         }
     }
 
@@ -64,7 +64,7 @@ extension ViewController2 {
         sender.isEnabled = false
         sessionManager.remove(task, completely: false) { [weak self] _ in
             self?.tableView.deleteRows(at: [IndexPath(row: index, section: 0)], with: .automatic)
-            self?.updateUI()
+            self?.updateViews()
             sender.isEnabled = true
         }
     }

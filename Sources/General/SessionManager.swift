@@ -977,7 +977,6 @@ extension SessionManager {
             self.completionHandler = nil
         }
     }
-    
 }
 
 

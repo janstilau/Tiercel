@@ -202,8 +202,6 @@ public class Task<TaskType>: NSObject, Codable {
         set { protectedState.write { $0.validateExecuter = newValue } }
     }
     
-    
-    
     internal init(_ url: URL,
                   headers: [String: String]? = nil,
                   cache: Cache,

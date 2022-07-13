@@ -1,16 +1,20 @@
 import Foundation
 
+// 一个自定义的 Lock 类, 这个 Lock 类, 目前只在该环境下被使用了.
 final public class UnfairLock {
     private let unfairLock: os_unfair_lock_t
     
     public init() {
-        
+        // 分配内存空间
         unfairLock = .allocate(capacity: 1)
+        // 进行初始化操作.
         unfairLock.initialize(to: os_unfair_lock())
     }
     
     deinit {
+        // 析构.
         unfairLock.deinitialize(count: 1)
+        // 回收内存空间.
         unfairLock.deallocate()
     }
     
@@ -22,7 +26,8 @@ final public class UnfairLock {
         os_unfair_lock_unlock(unfairLock)
     }
     
-    
+    // 这种, 使用 Defer 来完成后续逻辑处理的方式, 非常非常普遍.
+    // 根据, 闭包的返回值, 来决定整个函数的返回值, 这种写法非常普遍. 
     public func around<T>(_ closure: () throws -> T) rethrows -> T {
         lock(); defer { unlock() }
         return try closure()

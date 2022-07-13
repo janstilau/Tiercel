@@ -23,7 +23,7 @@ class DownloadViewController: BaseViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
 
-        updateUI()
+        updateViews()
         tableView.reloadData()
     }
 
@@ -42,7 +42,7 @@ extension DownloadViewController {
         sender.isEnabled = false
         sessionManager.remove(task, completely: false) { [weak self] _ in
             self?.tableView.deleteRows(at: [IndexPath(row: index, section: 0)], with: .automatic)
-            self?.updateUI()
+            self?.updateViews()
             sender.isEnabled = true
         }
     }

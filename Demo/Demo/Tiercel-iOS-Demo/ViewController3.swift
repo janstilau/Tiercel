@@ -24,7 +24,7 @@ class ViewController3: BaseViewController {
 
         sessionManager.logger.option = .none
 
-        updateUI()
+        updateViews()
         tableView.reloadData()
     }
 }
@@ -40,7 +40,7 @@ extension ViewController3 {
         // 如果同时开启的下载任务过多，会阻塞主线程，所以可以在子线程中开启
         DispatchQueue.global().async {
             self.sessionManager?.multiDownload(self.URLStrings) { [weak self] _ in
-                self?.updateUI()
+                self?.updateViews()
                 self?.tableView.reloadData()
             }
         }

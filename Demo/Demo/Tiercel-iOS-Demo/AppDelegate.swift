@@ -32,7 +32,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     let sessionManager4 = SessionManager("ViewController4", configuration: SessionConfiguration())
     
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        
         return true
     }
     

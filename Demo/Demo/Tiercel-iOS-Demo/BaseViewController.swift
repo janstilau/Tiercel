@@ -67,7 +67,7 @@ class BaseViewController: UIViewController {
         button.title = tableView.isEditing ? "完成" : "编辑"
     }
     
-    func updateUI() {
+    func updateViews() {
         totalTasksLabel.text = "总任务：\(sessionManager.succeededTasks.count)/\(sessionManager.tasks.count)"
         totalSpeedLabel.text = "总速度：\(sessionManager.speedString)"
         timeRemainingLabel.text = "剩余时间： \(sessionManager.timeRemainingString)"
@@ -84,10 +84,10 @@ class BaseViewController: UIViewController {
         
         // 设置 manager 的回调
         sessionManager.progress { [weak self] (manager) in
-            self?.updateUI()
+            self?.updateViews()
             
         }.completion { [weak self] manager in
-            self?.updateUI()
+            self?.updateViews()
             if manager.status == .succeeded {
                 // 下载成功
             } else {
@@ -125,7 +125,7 @@ extension BaseViewController {
     
     @IBAction func clearDisk(_ sender: Any) {
         sessionManager.cache.clearDiskCache()
-        updateUI()
+        updateViews()
     }
     
     
@@ -216,7 +216,7 @@ extension BaseViewController: UITableViewDataSource, UITableViewDelegate {
             guard let task = sessionManager.tasks.safeObject(at: indexPath.row) else { return }
             sessionManager.remove(task, completely: false) { [weak self] _ in
                 self?.tableView.deleteRows(at: [indexPath], with: .automatic)
-                self?.updateUI()
+                self?.updateViews()
             }
         }
     }
