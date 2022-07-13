@@ -36,6 +36,7 @@ extension Notification {
     }
 }
 
+// Center 专门定义快速进行对应 DownloadTask 组装的能力.
 extension NotificationCenter {
     func postNotification(name: Notification.Name, downloadTask: DownloadTask) {
         let notification = Notification(name: name, downloadTask: downloadTask)
@@ -50,5 +51,4 @@ extension NotificationCenter {
 extension String {
     fileprivate static let downloadTaskKey = "com.Tiercel.notification.key.downloadTask"
     fileprivate static let sessionManagerKey = "com.Tiercel.notification.key.sessionManagerKey"
-    
 }

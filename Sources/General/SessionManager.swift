@@ -888,8 +888,6 @@ extension SessionManager {
         }
     }
     
-    
-    
     internal func log(_ type: LogType) {
         logger.log(type)
     }

@@ -24,8 +24,26 @@ class ViewController1: UIViewController {
     lazy var URLString = "http://dldir1.qq.com/qqfile/QQforMac/QQ_V4.2.4.dmg"
     var sessionManager = appDelegate.sessionManager1
     
+    @Protected
+    private var workItems = [String: String]()
+    
     override func viewDidLoad() {
         super.viewDidLoad()
+        
+        /*
+         public var wrappedValue: T {
+             get { lock.around {
+                 value
+             }}
+             set { lock.around {
+                 value = newValue
+             } }
+         }
+         */
+        // 下面的操作, 其实会触发上面的 Get, Set 两种操作的.
+        // 所以, 这种操作实际山, 会引起 lock 触发. 
+        workItems["1"] = "one"
+        workItems["2"] = "two"
         
         sessionManager.tasks.safeObject(at: 0)?.progress { [weak self] (task) in
             self?.updateViews(task)

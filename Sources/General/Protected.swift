@@ -49,10 +49,15 @@ final public class Protected<T> {
     
     private var value: T
     
+    // 根据, 传入的闭包的返回值, 来调用 around 的不同的函数.
+    // 取值赋值, 直接就是在锁环境里面.
     public var wrappedValue: T {
-        // 根据, 传入的闭包的返回值, 来调用 around 的不同的函数.
-        get { lock.around { value } }
-        set { lock.around { value = newValue } }
+        get { lock.around {
+            value
+        }}
+        set { lock.around {
+            value = newValue
+        } }
     }
     
     public var projectedValue: Protected<T> { self }
@@ -95,22 +100,26 @@ final public class Debouncer {
         self.queue = queue
     }
     
-    
-    public func execute(label: String, deadline: DispatchTime, execute work: @escaping @convention(block) () -> Void) {
+    public func execute(label: String, deadline: DispatchTime, execute work: @escaping () -> Void) {
         execute(label: label, time: deadline, execute: work)
     }
     
     
-    public func execute(label: String, wallDeadline: DispatchWallTime, execute work: @escaping @convention(block) () -> Void) {
+    public func execute(label: String, wallDeadline: DispatchWallTime, execute work: @escaping () -> Void) {
         execute(label: label, time: wallDeadline, execute: work)
     }
     
-    
-    private func execute<T: Comparable>(label: String, time: T, execute work: @escaping @convention(block) () -> Void) {
+    // 之所以, 这里需要使用泛型, 主要是为了适配 DispatchTime 这一时间项.
+    private func execute<T: Comparable>(label: String, time: T, execute work: @escaping () -> Void) {
         lock.around {
             workItems[label]?.cancel()
             let workItem = DispatchWorkItem { [weak self] in
                 work()
+                // 应该这样做才正确吧. 直接使用 workItems 其实有点问题.
+                // 实际上, workItems 本身就是锁环境的, 所以这里其实是两把锁. 在 UnfairLock 的内部, protected 里面的这把锁还是在起作用.
+//                lock.around {
+//                    self?.workItems.removeValue(forKey: label)
+//                }
                 self?.workItems.removeValue(forKey: label)
             }
             workItems[label] = workItem
@@ -122,55 +131,4 @@ final public class Debouncer {
         }
     }
 }
-
-final public class Throttler {
-    
-    private let lock = UnfairLock()
-    
-    private let queue: DispatchQueue
-    
-    private var workItems = [String: DispatchWorkItem]()
-    
-    private let latest: Bool
-    
-    public init(queue: DispatchQueue, latest: Bool) {
-        self.queue = queue
-        self.latest = latest
-    }
-    
-    
-    public func execute(label: String, deadline: DispatchTime, execute work: @escaping @convention(block) () -> Void) {
-        execute(label: label, time: deadline, execute: work)
-    }
-    
-    
-    public func execute(label: String, wallDeadline: DispatchWallTime, execute work: @escaping @convention(block) () -> Void) {
-        execute(label: label, time: wallDeadline, execute: work)
-    }
-    
-    private func execute<T: Comparable>(label: String, time: T, execute work: @escaping @convention(block) () -> Void) {
-        lock.around {
-            let workItem = workItems[label]
-            
-            guard workItem == nil || latest else { return }
-            workItem?.cancel()
-            workItems[label] = DispatchWorkItem { [weak self] in
-                self?.workItems.removeValue(forKey: label)
-                work()
-            }
-            
-            guard workItem == nil else { return }
-            if let time = time as? DispatchTime {
-                queue.asyncAfter(deadline: time) { [weak self] in
-                    self?.workItems[label]?.perform()
-                }
-            } else if let time = time as? DispatchWallTime {
-                queue.asyncAfter(wallDeadline: time) { [weak self] in
-                    self?.workItems[label]?.perform()
-                }
-            }
-        }
-    }
-}
-
 

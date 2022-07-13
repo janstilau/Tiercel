@@ -21,15 +21,12 @@ class BaseViewController: UIViewController {
     @IBOutlet weak var taskLimitSwitch: UISwitch!
     @IBOutlet weak var cellularAccessSwitch: UISwitch!
     
-    
     var sessionManager: SessionManager!
     
     var URLStrings: [String] = []
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        
-        setupUI()
         
         // 检查磁盘空间
         let free = FileManager.default.tr.freeDiskSpaceInBytes / 1024 / 1024
