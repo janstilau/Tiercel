@@ -1,0 +1,16 @@
+PODS:
+  - Tiercel (3.2.5)
+
+DEPENDENCIES:
+  - Tiercel (from `../`)
+
+EXTERNAL SOURCES:
+  Tiercel:
+    :path: "../"
+
+SPEC CHECKSUMS:
+  Tiercel: c0a73f876a72800333b15f4e7e48791f4ad21e90
+
+PODFILE CHECKSUM: a17e742de0265b1133027c671e3706c56bdb212a
+
+COCOAPODS: 1.11.3
