@@ -27,7 +27,7 @@ final public class UnfairLock {
     }
     
     // 这种, 使用 Defer 来完成后续逻辑处理的方式, 非常非常普遍.
-    // 根据, 闭包的返回值, 来决定整个函数的返回值, 这种写法非常普遍. 
+    // 根据, 闭包的返回值, 来决定整个函数的返回值, 这种写法非常普遍.
     public func around<T>(_ closure: () throws -> T) rethrows -> T {
         lock(); defer { unlock() }
         return try closure()
@@ -39,6 +39,9 @@ final public class UnfairLock {
     }
 }
 
+/*
+ 泛型类, 抽象的是一个存储变量, T 类型.
+ */
 @propertyWrapper
 final public class Protected<T> {
     
@@ -47,25 +50,31 @@ final public class Protected<T> {
     private var value: T
     
     public var wrappedValue: T {
+        // 根据, 传入的闭包的返回值, 来调用 around 的不同的函数.
         get { lock.around { value } }
         set { lock.around { value = newValue } }
     }
     
     public var projectedValue: Protected<T> { self }
     
-    
     public init(_ value: T) {
         self.value = value
     }
     
+    // PropertyWrapper 真正会去调用的初始化函数.
     public init(wrappedValue: T) {
         value = wrappedValue
     }
     
+    // 这是一个最为灵活的, 进行扩展的方式.
+    /*
+     闭包, 可以抛出错误, 所以在内部使用的时候, 要使用 try.
+     返回值的类型, 是由闭包决定的.
+     闭包里面, 是一个 transfom 函数, 如果不需要 transfrom, 直接写 $0 就可以了, 就和 Pointer 一样.
+     */
     public func read<U>(_ closure: (T) throws -> U) rethrows -> U {
         return try lock.around { try closure(self.value) }
     }
-    
     
     @discardableResult
     public func write<U>(_ closure: (inout T) throws -> U) rethrows -> U {

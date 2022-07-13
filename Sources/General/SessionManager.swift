@@ -32,6 +32,7 @@ public class SessionManager {
         }
     }
     
+    // 最为重要的一个数据盒子.
     private struct State {
         var logger: Logable
         var isControlNetworkActivityIndicator: Bool = true

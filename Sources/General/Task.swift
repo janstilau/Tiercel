@@ -10,7 +10,97 @@ extension Task {
 
 public class Task<TaskType>: NSObject, Codable {
     
-    private enum CodingKeys: CodingKey {
+    public internal(set) weak var manager: SessionManager?
+    
+    internal var cache: Cache
+    
+    internal var operationQueue: DispatchQueue
+    
+    public let url: URL
+    
+    public let progress: Progress = Progress()
+    
+    internal let protectedState: Protected<State>
+    
+    internal init(_ url: URL,
+                  headers: [String: String]? = nil,
+                  cache: Cache,
+                  operationQueue:DispatchQueue) {
+        self.cache = cache
+        self.url = url
+        self.operationQueue = operationQueue
+        protectedState = Protected(State(currentURL: url, fileName: url.tr.fileName))
+        super.init()
+        self.headers = headers
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(url, forKey: .url)
+        try container.encode(currentURL, forKey: .currentURL)
+        try container.encode(fileName, forKey: .fileName)
+        try container.encodeIfPresent(headers, forKey: .headers)
+        try container.encode(startDate, forKey: .startDate)
+        try container.encode(endDate, forKey: .endDate)
+        try container.encode(progress.totalUnitCount, forKey: .totalBytes)
+        try container.encode(progress.completedUnitCount, forKey: .completedBytes)
+        try container.encode(status.rawValue, forKey: .status)
+        try container.encodeIfPresent(verificationCode, forKey: .verificationCode)
+        try container.encode(verificationType.rawValue, forKey: .verificationType)
+        try container.encode(validation.rawValue, forKey: .validation)
+        if let error = error {
+            let errorData: Data
+            if #available(iOS 11.0, *) {
+                errorData = try NSKeyedArchiver.archivedData(withRootObject: (error as NSError), requiringSecureCoding: true)
+            } else {
+                errorData = NSKeyedArchiver.archivedData(withRootObject: (error as NSError))
+            }
+            try container.encode(errorData, forKey: .error)
+        }
+    }
+    
+    public required init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        url = try container.decode(URL.self, forKey: .url)
+        let currentURL = try container.decode(URL.self, forKey: .currentURL)
+        let fileName = try container.decode(String.self, forKey: .fileName)
+        protectedState = Protected(State(currentURL: currentURL, fileName: fileName))
+        cache = decoder.userInfo[.cache] as? Cache ?? Cache("default")
+        operationQueue = decoder.userInfo[.operationQueue] as? DispatchQueue ?? DispatchQueue(label: "com.Tiercel.SessionManager.operationQueue")
+        super.init()
+        
+        progress.totalUnitCount = try container.decode(Int64.self, forKey: .totalBytes)
+        progress.completedUnitCount = try container.decode(Int64.self, forKey: .completedBytes)
+        
+        let statusString = try container.decode(String.self, forKey: .status)
+        let verificationTypeInt = try container.decode(Int.self, forKey: .verificationType)
+        let validationType = try container.decode(Int.self, forKey: .validation)
+        
+        try protectedState.write {
+            $0.headers = try container.decodeIfPresent([String: String].self, forKey: .headers)
+            $0.startDate = try container.decode(Double.self, forKey: .startDate)
+            $0.endDate = try container.decode(Double.self, forKey: .endDate)
+            $0.verificationCode = try container.decodeIfPresent(String.self, forKey: .verificationCode)
+            $0.status = Status(rawValue: statusString)!
+            $0.verificationType = FileChecksumHelper.VerificationType(rawValue: verificationTypeInt)!
+            $0.validation = Validation(rawValue: validationType)!
+            if let errorData = try container.decodeIfPresent(Data.self, forKey: .error) {
+                if #available(iOS 11.0, *) {
+                    $0.error = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSError.self, from: errorData)
+                } else {
+                    $0.error = NSKeyedUnarchiver.unarchiveObject(with: errorData) as? NSError
+                }
+            }
+        }
+    }
+    
+    internal func execute(_ Executer: Executer<TaskType>?) {
+        
+    }
+}
+
+extension Task {
+    fileprivate enum CodingKeys: CodingKey {
         case url
         case currentURL
         case fileName
@@ -37,16 +127,6 @@ public class Task<TaskType>: NSObject, Codable {
         case statusCode(_ statusCode: Int)
     }
     
-    public internal(set) weak var manager: SessionManager?
-    
-    internal var cache: Cache
-    
-    internal var operationQueue: DispatchQueue
-    
-    public let url: URL
-    
-    public let progress: Progress = Progress()
-    
     internal struct State {
         var session: URLSession?
         var headers: [String: String]?
@@ -70,10 +150,9 @@ public class Task<TaskType>: NSObject, Codable {
         var completionExecuter: Executer<TaskType>?
         var validateExecuter: Executer<TaskType>?
     }
-    
-    
-    internal let protectedState: Protected<State>
-    
+}
+
+extension Task {
     internal var session: URLSession? {
         get { protectedState.wrappedValue.session }
         set { protectedState.write { $0.session = newValue } }
@@ -201,85 +280,7 @@ public class Task<TaskType>: NSObject, Codable {
         get { protectedState.wrappedValue.validateExecuter }
         set { protectedState.write { $0.validateExecuter = newValue } }
     }
-    
-    internal init(_ url: URL,
-                  headers: [String: String]? = nil,
-                  cache: Cache,
-                  operationQueue:DispatchQueue) {
-        self.cache = cache
-        self.url = url
-        self.operationQueue = operationQueue
-        protectedState = Protected(State(currentURL: url, fileName: url.tr.fileName))
-        super.init()
-        self.headers = headers
-    }
-    
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(url, forKey: .url)
-        try container.encode(currentURL, forKey: .currentURL)
-        try container.encode(fileName, forKey: .fileName)
-        try container.encodeIfPresent(headers, forKey: .headers)
-        try container.encode(startDate, forKey: .startDate)
-        try container.encode(endDate, forKey: .endDate)
-        try container.encode(progress.totalUnitCount, forKey: .totalBytes)
-        try container.encode(progress.completedUnitCount, forKey: .completedBytes)
-        try container.encode(status.rawValue, forKey: .status)
-        try container.encodeIfPresent(verificationCode, forKey: .verificationCode)
-        try container.encode(verificationType.rawValue, forKey: .verificationType)
-        try container.encode(validation.rawValue, forKey: .validation)
-        if let error = error {
-            let errorData: Data
-            if #available(iOS 11.0, *) {
-                errorData = try NSKeyedArchiver.archivedData(withRootObject: (error as NSError), requiringSecureCoding: true)
-            } else {
-                errorData = NSKeyedArchiver.archivedData(withRootObject: (error as NSError))
-            }
-            try container.encode(errorData, forKey: .error)
-        }
-    }
-    
-    public required init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        url = try container.decode(URL.self, forKey: .url)
-        let currentURL = try container.decode(URL.self, forKey: .currentURL)
-        let fileName = try container.decode(String.self, forKey: .fileName)
-        protectedState = Protected(State(currentURL: currentURL, fileName: fileName))
-        cache = decoder.userInfo[.cache] as? Cache ?? Cache("default")
-        operationQueue = decoder.userInfo[.operationQueue] as? DispatchQueue ?? DispatchQueue(label: "com.Tiercel.SessionManager.operationQueue")
-        super.init()
-        
-        progress.totalUnitCount = try container.decode(Int64.self, forKey: .totalBytes)
-        progress.completedUnitCount = try container.decode(Int64.self, forKey: .completedBytes)
-        
-        let statusString = try container.decode(String.self, forKey: .status)
-        let verificationTypeInt = try container.decode(Int.self, forKey: .verificationType)
-        let validationType = try container.decode(Int.self, forKey: .validation)
-        
-        try protectedState.write {
-            $0.headers = try container.decodeIfPresent([String: String].self, forKey: .headers)
-            $0.startDate = try container.decode(Double.self, forKey: .startDate)
-            $0.endDate = try container.decode(Double.self, forKey: .endDate)
-            $0.verificationCode = try container.decodeIfPresent(String.self, forKey: .verificationCode)
-            $0.status = Status(rawValue: statusString)!
-            $0.verificationType = FileChecksumHelper.VerificationType(rawValue: verificationTypeInt)!
-            $0.validation = Validation(rawValue: validationType)!
-            if let errorData = try container.decodeIfPresent(Data.self, forKey: .error) {
-                if #available(iOS 11.0, *) {
-                    $0.error = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSError.self, from: errorData)
-                } else {
-                    $0.error = NSKeyedUnarchiver.unarchiveObject(with: errorData) as? NSError
-                }
-            }
-        }
-    }
-    
-    internal func execute(_ Executer: Executer<TaskType>?) {
-        
-    }
-    
 }
-
 
 extension Task {
     @discardableResult
@@ -329,7 +330,6 @@ extension Task {
         }
         return self
     }
-    
 }
 
 
