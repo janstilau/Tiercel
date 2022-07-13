@@ -61,6 +61,13 @@ public enum Status: String {
     case willRemove
 }
 
+
+
+/*
+    Wrapper 这种模式, 在 Tiercel 库中的使用.
+    TiercelCompatible 提供的能力, 是能够调用 yd, tr 这样的一个属性, 进行一次包装.
+    各种能力, 都是在 TiercelWrapper 上进行的添加. 使用 base 获取原始数据, 在原始数据上, 添加新的逻辑.
+ */
 public struct TiercelWrapper<Base> {
     internal let base: Base
     internal init(_ base: Base) {
@@ -68,10 +75,7 @@ public struct TiercelWrapper<Base> {
     }
 }
 
-
-public protocol TiercelCompatible {
-    
-}
+public protocol TiercelCompatible { }
 
 extension TiercelCompatible {
     public var tr: TiercelWrapper<Self> {

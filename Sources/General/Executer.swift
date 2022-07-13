@@ -2,6 +2,7 @@ import Foundation
 
 public typealias Handler<T> = (T) -> ()
 
+// 命令对象的封装, 在内部进行了线程调度的封装.
 public class Executer<T> {
     private let onMainQueue: Bool
     private let handler: Handler<T>?
@@ -10,7 +11,6 @@ public class Executer<T> {
         self.onMainQueue = onMainQueue
         self.handler = handler
     }
-    
     
     public func execute(_ object: T) {
         if let handler = handler {

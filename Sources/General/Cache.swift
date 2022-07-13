@@ -352,6 +352,8 @@ extension Cache {
 }
 
 extension URL: TiercelCompatible { }
+
+// 使用, 地址的 MD5, 当做文件名, 并且在后面添加原有的文件扩展名. 
 extension TiercelWrapper where Base == URL {
     public var fileName: String {
         var fileName = base.absoluteString.tr.md5

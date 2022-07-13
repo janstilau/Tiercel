@@ -2,6 +2,10 @@ import Foundation
 import CommonCrypto
 
 extension Data: TiercelCompatible { }
+
+/*
+ 使用 base 来获取数据, 不直接在 String 上定义扩展方法. 
+ */
 extension TiercelWrapper where Base == Data {
     public var md5: String {
         var digest = [UInt8](repeating: 0, count: Int(CC_MD5_DIGEST_LENGTH))
@@ -34,5 +38,4 @@ extension TiercelWrapper where Base == Data {
         }
         return digest.map { String(format: "%02x", $0) }.joined()
     }
-    
 }
