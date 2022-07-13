@@ -1,45 +1,19 @@
-//
-//  Cache.swift
-//  Tiercel
-//
-//  Created by Daniels on 2018/3/16.
-//  Copyright © 2018 Daniels. All rights reserved.
-//
-//  Permission is hereby granted, free of charge, to any person obtaining a copy
-//  of this software and associated documentation files (the "Software"), to deal
-//  in the Software without restriction, including without limitation the rights
-//  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-//  copies of the Software, and to permit persons to whom the Software is
-//  furnished to do so, subject to the following conditions:
-//
-//  The above copyright notice and this permission notice shall be included in
-//  all copies or substantial portions of the Software.
-//
-//  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-//  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-//  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-//  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-//  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-//  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-//  THE SOFTWARE.
-//
-
 import Foundation
 
 public class Cache {
-
+    
     private let ioQueue: DispatchQueue
     
     private var debouncer: Debouncer
     
     public let downloadPath: String
-
+    
     public let downloadTmpPath: String
     
     public let downloadFilePath: String
     
     public let identifier: String
-        
+    
     private let fileManager = FileManager.default
     
     private let encoder = PropertyListEncoder()
@@ -53,7 +27,7 @@ public class Cache {
         return (dstPath as NSString).appendingPathComponent(cacheName)
     }
     
-
+    
     /// 初始化方法
     /// - Parameters:
     ///   - identifier: 不同的identifier代表不同的下载模块。如果没有自定义下载目录，Cache会提供默认的目录，这些目录跟identifier相关
@@ -71,17 +45,17 @@ public class Cache {
         let cacheName = "com.Daniels.Tiercel.Cache.\(identifier)"
         
         let diskCachePath = Cache.defaultDiskCachePathClosure(cacheName)
-                
+        
         let path = downloadPath ?? (diskCachePath as NSString).appendingPathComponent("Downloads")
-                
+        
         self.downloadPath = path
-
+        
         self.downloadTmpPath = downloadTmpPath ?? (path as NSString).appendingPathComponent("Tmp")
         
         self.downloadFilePath = downloadFilePath ?? (path as NSString).appendingPathComponent("File")
         
         createDirectory()
-
+        
         decoder.userInfo[.cache] = self
         
     }
@@ -175,7 +149,7 @@ extension Cache {
                 try self.fileManager.removeItem(atPath: self.downloadPath)
             } catch {
                 self.manager?.log(.error("clear disk cache failed",
-                                    error: TiercelError.cacheError(reason: .cannotRemoveItem(path: self.downloadPath,
+                                         error: TiercelError.cacheError(reason: .cannotRemoveItem(path: self.downloadPath,
                                                                                                   error: error))))
             }
             self.createDirectory()
@@ -209,11 +183,11 @@ extension Cache {
                     return [DownloadTask]()
                 }
             } else {
-               return  [DownloadTask]()
+                return  [DownloadTask]()
             }
         }
     }
-
+    
     internal func retrieveTmpFile(_ tmpFileName: String?) -> Bool {
         return ioQueue.sync {
             guard let tmpFileName = tmpFileName, !tmpFileName.isEmpty else { return false }
@@ -243,10 +217,10 @@ extension Cache {
             }
             return true
         }
- 
+        
     }
-
-
+    
+    
 }
 
 
@@ -319,7 +293,7 @@ extension Cache {
                     self.manager?.log(.error("update fileName failed",
                                              error: TiercelError.cacheError(reason: .cannotMoveItem(atPath: filePath,
                                                                                                     toPath: newFilePath,
-                                                                                                      error: error))))
+                                                                                                    error: error))))
                 }
             }
         }
@@ -351,7 +325,7 @@ extension Cache {
         }
     }
     
-
+    
     
     /// 删除保留在本地的缓存文件
     ///
@@ -372,7 +346,7 @@ extension Cache {
                     }
                 }
             }
-
+            
         }
     }
 }
