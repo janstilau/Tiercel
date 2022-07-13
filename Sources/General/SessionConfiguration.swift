@@ -1,5 +1,6 @@
 import Foundation
 
+// 一个配置类而已. 
 public struct SessionConfiguration {
     // 请求超时时间
     public var timeoutIntervalForRequest: TimeInterval = 60.0

@@ -16,11 +16,11 @@ public class Cache {
     
     private let fileManager = FileManager.default
     
-    private let encoder = PropertyListEncoder()
+    private let encoder = JSONEncoder()
     
     internal weak var manager: SessionManager?
     
-    private let decoder = PropertyListDecoder()
+    private let decoder = JSONDecoder()
     
     public static func defaultDiskCachePathClosure(_ cacheName: String) -> String {
         let dstPath = NSSearchPathForDirectoriesInDomains(.cachesDirectory, .userDomainMask, true).first!
@@ -69,7 +69,6 @@ public class Cache {
 // MARK: - file
 extension Cache {
     internal func createDirectory() {
-        
         if !fileManager.fileExists(atPath: downloadPath) {
             do {
                 try fileManager.createDirectory(atPath: downloadPath, withIntermediateDirectories: true, attributes: nil)
@@ -226,7 +225,9 @@ extension Cache {
 
 // MARK: - store
 extension Cache {
+    // 把所有的下载任务, 当做了文件进行了存储. 
     internal func storeTasks(_ tasks: [DownloadTask]) {
+        // 把, 所有的任务, 都使用文件进行了存储.
         debouncer.execute(label: "storeTasks", wallDeadline: .now() + 0.2) {
             var path = (self.downloadPath as NSString).appendingPathComponent("\(self.identifier)_Tasks.plist")
             do {

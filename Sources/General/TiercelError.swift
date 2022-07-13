@@ -1,5 +1,6 @@
 import Foundation
 
+// 将, 库中所有的错误, 统一使用了一个 Error 类型进行了管理.
 public enum TiercelError: Error {
     
     public enum CacheErrorReason {

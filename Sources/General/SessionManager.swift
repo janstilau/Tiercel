@@ -238,6 +238,7 @@ public class SessionManager {
     
     private func createSession(_ completion: (() -> ())? = nil) {
         guard shouldCreatSession else { return }
+        // 最为重要的部分, 使用 background 进行了下载的动作.
         let sessionConfiguration = URLSessionConfiguration.background(withIdentifier: identifier)
         sessionConfiguration.timeoutIntervalForRequest = configuration.timeoutIntervalForRequest
         sessionConfiguration.httpMaximumConnectionsPerHost = 100000
@@ -287,6 +288,7 @@ extension SessionManager {
             operationQueue.sync {
                 task = fetchTask(validURL)
                 if let task = task {
+                    // 仅仅是做, 对应数据的替换而已.
                     task.update(headers, newFileName: fileName)
                 } else {
                     task = DownloadTask(validURL,

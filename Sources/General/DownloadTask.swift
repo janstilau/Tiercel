@@ -90,8 +90,10 @@ public class DownloadTask: Task<DownloadTask> {
     
     public override func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        // 通过 SuperEncoder 的方式, 其实是使得 Super 的内容, 和 JSON 中的 Super 字段绑定在了一起.
         let superEncoder = container.superEncoder()
         try super.encode(to: superEncoder)
+        
         try container.encodeIfPresent(resumeData, forKey: .resumeData)
         if let response = response {
             let responseData: Data
@@ -212,6 +214,7 @@ extension DownloadTask {
                 progress.completedUnitCount = 0
                 progress.totalUnitCount = 0
             }
+            // 真正的, 进行下载任务的开启. 
             progress.setUserInfoObject(progress.completedUnitCount, forKey: .fileCompletedCountKey)
             sessionTask?.resume()
             manager?.maintainTasks(with: .appendRunningTasks(self))
@@ -268,7 +271,8 @@ extension DownloadTask {
     
     internal func update(_ newHeaders: [String: String]? = nil, newFileName: String? = nil) {
         headers = newHeaders
-        if let newFileName = newFileName, !newFileName.isEmpty {
+        if let newFileName = newFileName,
+            !newFileName.isEmpty {
             cache.updateFileName(filePath, newFileName)
             fileName = newFileName
         }
