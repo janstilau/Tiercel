@@ -13,5 +13,4 @@ extension TiercelWrapper where Base == Double {
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         return formatter.string(from: date)
     }
-    
 }

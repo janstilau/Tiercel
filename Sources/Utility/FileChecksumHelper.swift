@@ -2,6 +2,7 @@ import Foundation
 
 // 这是一个工具类, 提供了类似下载文件的签名验证的功能 .
 public enum FileChecksumHelper {
+    // 将类型, 定义在对应的业务模块类的内部, 这是一个更加合理的代码组织方式. 
     public enum VerificationType : Int {
         case md5
         case sha1

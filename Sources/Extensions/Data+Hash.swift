@@ -6,6 +6,7 @@ extension Data: TiercelCompatible { }
 /*
  使用 base 来获取数据, 不直接在 String 上定义扩展方法. 
  */
+// 这里面的所有方法, 都是在 Validate 业务模块中被使用.
 extension TiercelWrapper where Base == Data {
     public var md5: String {
         var digest = [UInt8](repeating: 0, count: Int(CC_MD5_DIGEST_LENGTH))

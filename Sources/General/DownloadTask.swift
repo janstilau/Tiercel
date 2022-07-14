@@ -344,6 +344,7 @@ extension DownloadTask {
         manager?.determineStatus(fromRunningTask: fromRunning)
     }
     
+    // 触发时机, 一般都在子线程中. 因为, 一般都是在 Session 的 Delegate 方法中, 触发相关的操作.
     private func determineStatus(with interruptType: InterruptType) {
         var fromRunning = true
         switch interruptType {

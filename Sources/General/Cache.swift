@@ -1,5 +1,6 @@
 import Foundation
 
+// 使用了一个专门的类, 来做文件读取这回事.
 public class Cache {
     
     private let ioQueue: DispatchQueue
@@ -40,6 +41,7 @@ public class Cache {
                 downloadFilePath: String? = nil) {
         self.identifier = identifier
         
+        // ioQueue 是一个串行队列. 
         let ioQueueName = "com.Tiercel.Cache.ioQueue.\(identifier)"
         ioQueue = DispatchQueue(label: ioQueueName, autoreleaseFrequency: .workItem)
         
@@ -225,7 +227,7 @@ extension Cache {
 
 // MARK: - store
 extension Cache {
-    // 把所有的下载任务, 当做了文件进行了存储. 
+    // 把所有的下载任务, 当做了文件进行了存储.
     internal func storeTasks(_ tasks: [DownloadTask]) {
         // 把, 所有的任务, 都使用文件进行了存储.
         debouncer.execute(label: "storeTasks", wallDeadline: .now() + 0.2) {
@@ -257,7 +259,7 @@ extension Cache {
         }
     }
     
-    // 存储已经下载的临时文件. 
+    // 存储已经下载的临时文件.
     internal func storeTmpFile(_ tmpFileName: String?) {
         ioQueue.sync {
             guard let tmpFileName = tmpFileName, !tmpFileName.isEmpty else { return }
