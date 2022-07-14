@@ -983,6 +983,7 @@ extension SessionManager {
     }
     
     internal func didFinishEvents(forBackgroundURLSession session: URLSession) {
+        // 必须在主线程调用. 文档里面明确进行了说明. 
         DispatchQueue.tr.executeOnMain {
             self.completionHandler?()
             self.completionHandler = nil
