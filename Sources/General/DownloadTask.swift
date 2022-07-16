@@ -157,6 +157,7 @@ extension DownloadTask {
             if cache.fileExists(fileName: fileName) {
                 resetForStartDownload(fileExists: true)
             } else {
+                // shouldRun 中有着对于最大并发数的考虑. 所以实际上, 还是不会超过最大并发数的. 
                 if manager.shouldRun {
                     resetForStartDownload(fileExists: false)
                 } else {
@@ -167,7 +168,7 @@ extension DownloadTask {
             }
         case .succeeded:
             executeControl()
-            succeeded(fromRunning: false, immediately: false)
+            succeeded(fromRunning: false, triggerCompletion: false)
         case .running:
             status = .running
             executeControl()
@@ -324,9 +325,7 @@ extension DownloadTask {
     }
     
     // FromRunning 指的是, 从正在运行的网络任务中成功了.
-    // 如果是本地缓存中, 则是 false.
-    // 这个 immediately 有什么作用.
-    internal func succeeded(fromRunning: Bool, immediately: Bool) {
+    internal func succeeded(fromRunning: Bool, triggerCompletion: Bool) {
         if endDate == 0 {
             protectedState.write {
                 // 成功了, 进行完成事件的赋值.
@@ -341,7 +340,7 @@ extension DownloadTask {
         
         // 完成进度回调. 使用 Executer 来执行, 因为里面有线程回调.
         progressExecuter?.execute(self)
-        if immediately {
+        if triggerCompletion {
             executeCompletion(true)
         }
         validateFile()
@@ -501,26 +500,26 @@ extension DownloadTask {
 // MARK: - callback
 extension DownloadTask {
     internal func didWriteData(downloadTask: URLSessionDownloadTask, bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        // 更新一下自己的进度信息.
         progress.completedUnitCount = totalBytesWritten
         progress.totalUnitCount = totalBytesExpectedToWrite
         response = downloadTask.response as? HTTPURLResponse
         progressExecuter?.execute(self)
+        // 更新一下, 总的进度信息.
         manager?.updateProgress()
         NotificationCenter.default.postNotification(name: DownloadTask.runningNotification, downloadTask: self)
     }
     
-    
+    // 在下载完成的回调里面, 是完成了文件的移动工作. 
     internal func didFinishDownloading(task: URLSessionDownloadTask, to location: URL) {
         guard let statusCode = (task.response as? HTTPURLResponse)?.statusCode,
               acceptableStatusCodes.contains(statusCode)
         else { return }
+        
         cache.storeFile(at: location, to: URL(fileURLWithPath: filePath))
         cache.removeTmpFile(tmpFileName)
     }
     
-    /*
-     
-     */
     internal func didComplete(_ type: CompletionType) {
         switch type {
         case .local:
@@ -529,7 +528,7 @@ extension DownloadTask {
             case .willSuspend, .willCancel, .willRemove:
                 determineStatusWhenDownloadFailed(with: .manual(false))
             case .running:
-                succeeded(fromRunning: false, immediately: true)
+                succeeded(fromRunning: false, triggerCompletion: true)
             default:
                 return
             }
@@ -543,6 +542,7 @@ extension DownloadTask {
             switch status {
             case .willCancel, .willRemove:
                 // 当 Cancel, Remove 主动调用的时候, 不会直接触发, 而是使用 DataTask 的 cancel 方法, 等待 URLSession 的 Delegate 触发到这里.
+                // 如果当前的状态, 是以上两种, 就是用户主动行为.
                 determineStatusWhenDownloadFailed(with: .manual(true))
                 return
             case .willSuspend, .running:
@@ -561,7 +561,7 @@ extension DownloadTask {
                     determineStatusWhenDownloadFailed(with: .statusCode(statusCode))
                 } else {
                     resumeData = nil
-                    succeeded(fromRunning: true, immediately: true)
+                    succeeded(fromRunning: true, triggerCompletion: true)
                 }
             default:
                 return

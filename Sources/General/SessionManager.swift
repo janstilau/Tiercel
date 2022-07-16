@@ -17,7 +17,7 @@ public class SessionManager {
     public let identifier: String
     
     public var completionHandler: (() -> Void)?
-     
+    
     public var configuration: SessionConfiguration {
         get { protectedState.wrappedValue.configuration }
         set {
@@ -298,6 +298,7 @@ extension SessionManager {
                 task = fetchTask(validURL)
                 if let task = task {
                     // 仅仅是做, 对应数据的替换而已.
+                    // 因为这个 Filename 仅仅是最后进行文件拷贝的时候才会触发, 所以不会造成太大的问题.
                     task.update(headers, newFileName: fileName)
                 } else {
                     task = DownloadTask(validURL,
@@ -835,7 +836,7 @@ extension SessionManager {
         storeTasks()
         
         // 如果是 fromRunningTask, 就是下载过程中, 而不是用户主动行为触发的. 这种时候, 要进行任务调度, 进行新的任务.
-        // 否则, 是用户点击触发的, 那么上面的状态修改了之后, 不应该触发后续的行为. 
+        // 否则, 是用户点击触发的, 那么上面的状态修改了之后, 不应该触发后续的行为.
         if fromRunningTask {
             // next task
             operationQueue.async {
@@ -849,7 +850,6 @@ extension SessionManager {
         storeTasks()
         invalidateTimer()
     }
-    
     
     private func startNextTask() {
         guard let waitingTask = tasks.first (where: { $0.status == .waiting }) else { return }
@@ -986,7 +986,7 @@ extension SessionManager {
     }
     
     internal func didFinishEvents(forBackgroundURLSession session: URLSession) {
-        // 必须在主线程调用. 文档里面明确进行了说明. 
+        // 必须在主线程调用. 文档里面明确进行了说明.
         DispatchQueue.tr.executeOnMain {
             self.completionHandler?()
             self.completionHandler = nil

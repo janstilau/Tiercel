@@ -38,6 +38,8 @@ extension SessionDelegate: URLSessionDownloadDelegate {
     }
     
     // 下载完成的回调.
+    // Tells the delegate that a download task has finished downloading.
+    // 这个方法, 会在 didCompleteWithError 之前进行调用, 但是后续的方法, 还是会继续进行调用的.
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         guard let manager = manager else { return }
         guard let currentURL = downloadTask.currentRequest?.url else { return }
@@ -54,7 +56,6 @@ extension SessionDelegate: URLSessionDownloadDelegate {
         
         if let currentURL = task.currentRequest?.url {
             guard let downloadTask = manager.mapTask(currentURL) else {
-                manager.log(.error("urlSession(_:task:didCompleteWithError:)", error: TiercelError.fetchDownloadTaskFailed(url: currentURL)))
                 return
             }
             downloadTask.didComplete(.network(task: task, error: error))
@@ -63,17 +64,10 @@ extension SessionDelegate: URLSessionDownloadDelegate {
                 if let urlError = error as? URLError,
                    let errorURL = urlError.userInfo[NSURLErrorFailingURLErrorKey] as? URL {
                     guard let downloadTask = manager.mapTask(errorURL) else {
-                        manager.log(.error("urlSession(_:task:didCompleteWithError:)", error: TiercelError.fetchDownloadTaskFailed(url: errorURL)))
-                        manager.log(.error("urlSession(_:task:didCompleteWithError:)", error: error))
                         return
                     }
                     downloadTask.didComplete(.network(task: task, error: error))
-                } else {
-                    manager.log(.error("urlSession(_:task:didCompleteWithError:)", error: error))
-                    return
                 }
-            } else {
-                manager.log(.error("urlSession(_:task:didCompleteWithError:)", error: TiercelError.unknown))
             }
         }
     }
