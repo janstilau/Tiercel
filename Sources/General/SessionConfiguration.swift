@@ -25,15 +25,12 @@ public struct SessionConfiguration {
     
     public var allowsExpensiveNetworkAccess: Bool = true
     
-    
     public var allowsConstrainedNetworkAccess: Bool = true
     
     // 是否允许蜂窝网络下载
     public var allowsCellularAccess: Bool = false
     
-    public init() {
-        
-    }
+    public init() { }
 }
 
 

@@ -25,6 +25,7 @@ public class SessionManager {
                 protectedState.write {
                     $0.configuration = newValue
                     if $0.status == .running {
+                        // 当, 配置发生改变之后, 所有的任务都暂停.
                         totalSuspend()
                     }
                 }
@@ -761,7 +762,7 @@ extension SessionManager {
     }
     
     // DownloadTask 里面, 会触发 Manager 的 Schedule 的操作.
-    internal func determineStatus(fromRunningTask: Bool) {
+    internal func reSchedule(fromRunningTask: Bool) {
         if isControlNetworkActivityIndicator {
             DispatchQueue.tr.executeOnMain {
                 UIApplication.shared.isNetworkActivityIndicatorVisible = false
@@ -833,6 +834,8 @@ extension SessionManager {
         
         storeTasks()
         
+        // 如果是 fromRunningTask, 就是下载过程中, 而不是用户主动行为触发的. 这种时候, 要进行任务调度, 进行新的任务.
+        // 否则, 是用户点击触发的, 那么上面的状态修改了之后, 不应该触发后续的行为. 
         if fromRunningTask {
             // next task
             operationQueue.async {

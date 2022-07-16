@@ -41,7 +41,7 @@ public class Cache {
                 downloadFilePath: String? = nil) {
         self.identifier = identifier
         
-        // ioQueue 是一个串行队列. 
+        // ioQueue 是一个串行队列.
         let ioQueueName = "com.Tiercel.Cache.ioQueue.\(identifier)"
         ioQueue = DispatchQueue(label: ioQueueName, autoreleaseFrequency: .workItem)
         
@@ -246,6 +246,7 @@ extension Cache {
         }
     }
     
+    // 这里应该叫做 move. 
     internal func storeFile(at srcURL: URL, to dstURL: URL) {
         ioQueue.sync {
             do {
@@ -259,7 +260,7 @@ extension Cache {
         }
     }
     
-    // 存储已经下载的临时文件.
+    // 这个方法, 会在出错的时候调用. 会有一个备份的动作.
     internal func storeTmpFile(_ tmpFileName: String?) {
         ioQueue.sync {
             guard let tmpFileName = tmpFileName, !tmpFileName.isEmpty else { return }
