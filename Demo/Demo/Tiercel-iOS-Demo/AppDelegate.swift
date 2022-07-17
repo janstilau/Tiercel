@@ -18,6 +18,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     
     let sessionManager1 = SessionManager("ViewController1", configuration: SessionConfiguration())
     
+    lazy var eventLabel: UILabel = {
+        let label = UILabel()
+        label.backgroundColor = UIColor.red.withAlphaComponent(0.3)
+        label.textColor = UIColor.white
+        label.font = .systemFont(ofSize: 20, weight: .bold)
+        return label
+    }()
+    
     var sessionManager2: SessionManager = {
         var configuration = SessionConfiguration()
         configuration.allowsCellularAccess = true
@@ -50,6 +58,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 break
             }
         }
+        self.window?.addSubview(eventLabel)
+        eventLabel.text = identifier
+        eventLabel.frame = CGRect.init(x: 10, y: 400, width: 200, height: 100)
     }
 }
 

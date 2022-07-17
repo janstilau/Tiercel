@@ -1,7 +1,6 @@
 import UIKit
 
 public class SessionManager {
-    
     enum MaintainTasksAction {
         case append(DownloadTask)
         case remove(DownloadTask)
@@ -43,9 +42,9 @@ public class SessionManager {
                 shouldCreatSession = true
                 if status == .running {
                     if configuration.maxConcurrentTasksLimit <= oldValue.maxConcurrentTasksLimit {
-                        restartTasks = runningTasks + tasks.filter { $0.status == .waiting }
+                        uncompletedTasks = runningTasks + tasks.filter { $0.status == .waiting }
                     } else {
-                        restartTasks = tasks.filter { $0.status == .waiting || $0.status == .running }
+                        uncompletedTasks = tasks.filter { $0.status == .waiting || $0.status == .running }
                     }
                 } else {
                     session?.invalidateAndCancel()
@@ -61,7 +60,7 @@ public class SessionManager {
         var taskMapper: [String: DownloadTask] = [String: DownloadTask]()
         var urlMapper: [URL: URL] = [URL: URL]()
         var runningTasks: [DownloadTask] = []
-        var restartTasks: [DownloadTask] = []
+        var uncompletedTasks: [DownloadTask] = []
         var succeededTasks: [DownloadTask] = []
         var speed: Int64 = 0
         var timeRemaining: Int64 = 0
@@ -130,9 +129,9 @@ public class SessionManager {
         set { protectedState.write { $0.runningTasks = newValue } }
     }
     
-    private var restartTasks: [DownloadTask] {
-        get { protectedState.wrappedValue.restartTasks }
-        set { protectedState.write { $0.restartTasks = newValue } }
+    private var uncompletedTasks: [DownloadTask] {
+        get { protectedState.wrappedValue.uncompletedTasks }
+        set { protectedState.write { $0.uncompletedTasks = newValue } }
     }
     
     public private(set) var succeededTasks: [DownloadTask] {
@@ -215,6 +214,7 @@ public class SessionManager {
         protectedState.write { state in
             state.tasks.forEach {
                 $0.manager = self
+                // 这里, Task 的 Queue 和 Session 的 Queue 是一个 Queue 了.
                 $0.operationQueue = operationQueue
                 state.urlMapper[$0.currentURL] = $0.url
             }
@@ -249,6 +249,14 @@ public class SessionManager {
          You can configure an background session to schedule transfers at the discretion of the system for optimal performance using the isDiscretionary property. When transferring large amounts of data, you are encouraged to set the value of this property to true. For an example of using the background configuration, see Downloading Files in the Background.
          */
         let sessionConfiguration = URLSessionConfiguration.background(withIdentifier: identifier)
+        /*
+         This property determines the request timeout interval for all tasks within sessions based on this configuration. The request timeout interval controls how long (in seconds) a task should wait for additional data to arrive before giving up. The timer associated with this value is reset whenever new data arrives. When the request timer reaches the specified interval without receiving any new data, it triggers a timeout.
+         The default value is 60.
+         Important
+         Any upload or download tasks created by a background session are automatically retried if the original request fails due to a timeout. To configure how long an upload or download task should be allowed to be retried or transferred, use the timeoutIntervalForResource property.
+         */
+        // 这个值控制的是, URL Loading 的过程中, 不断的接收到网络数据中的间隔事件. 而不是整体的 Loading 时间.
+        // 有一个 TimeoutForResource 是固定的, 整体的 Loading 时间.
         sessionConfiguration.timeoutIntervalForRequest = configuration.timeoutIntervalForRequest
         sessionConfiguration.httpMaximumConnectionsPerHost = 100000
         sessionConfiguration.allowsCellularAccess = configuration.allowsCellularAccess
@@ -258,7 +266,8 @@ public class SessionManager {
         }
         let sessionDelegate = SessionDelegate()
         sessionDelegate.manager = self
-        // 网络请求相关的 Queue, 都是串行的.
+        // 网络请求的事件, 都是使用的串行队列. 因为本身这就是一个有着时间先后的事件处理机制.
+        // 如果使用并发队列, data 来临后, 后续的 data 事件在前面的闭包事件中被处理了, 那么拼接数据的时候, 就出错了. 
         let delegateQueue = OperationQueue(maxConcurrentOperationCount: 1,
                                            underlyingQueue: operationQueue,
                                            name: "com.Tiercel.SessionManager.delegateQueue")
@@ -304,7 +313,9 @@ extension SessionManager {
                     task = DownloadTask(validURL,
                                         headers: headers,
                                         fileName: fileName,
+                                        // 新创建的 cache, 也是 Session 的 Cache.
                                         cache: cache,
+                                        // 新创建的 Queue, 也是 Session 的 queue
                                         operationQueue: operationQueue)
                     task.manager = self
                     task.session = session
@@ -319,7 +330,6 @@ extension SessionManager {
             log(.error("create dowloadTask failed", error: error))
             return nil
         }
-        
     }
     
     
@@ -444,15 +454,17 @@ extension SessionManager {
         _start(task, onMainQueue: onMainQueue, handler: handler)
     }
     
-    private func _start(_ task: DownloadTask, onMainQueue: Bool = true, handler: Handler<DownloadTask>? = nil) {
+    private func _start(_ task: DownloadTask,
+                        onMainQueue: Bool = true,
+                        handler: Handler<DownloadTask>? = nil) {
         task.controlExecuter = Executer(onMainQueue: onMainQueue, handler: handler)
         didStart()
         if !shouldCreatSession {
             task.download()
         } else {
             task.status = .suspended
-            if !restartTasks.contains(task) {
-                restartTasks.append(task)
+            if !uncompletedTasks.contains(task) {
+                uncompletedTasks.append(task)
             }
         }
     }
@@ -977,14 +989,16 @@ extension SessionManager {
 
 // MARK: - call back
 extension SessionManager {
+    // 没太明白这里在干什么.
     internal func didBecomeInvalidation(withError error: Error?) {
         createSession { [weak self] in
             guard let self = self else { return }
-            self.restartTasks.forEach { self._start($0) }
-            self.restartTasks.removeAll()
+            self.uncompletedTasks.forEach { self._start($0) }
+            self.uncompletedTasks.removeAll()
         }
     }
     
+    // 这个就是
     internal func didFinishEvents(forBackgroundURLSession session: URLSession) {
         // 必须在主线程调用. 文档里面明确进行了说明.
         DispatchQueue.tr.executeOnMain {

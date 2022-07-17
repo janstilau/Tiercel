@@ -4,7 +4,8 @@ internal class SessionDelegate: NSObject {
     internal weak var manager: SessionManager?
 }
 
-// 几个 URLSession 的层级关系是继承的. 所以, 实际上, 这里是最全的 Delegate 的协议了.
+// 其实, 应该是 Session Manager 来充当 URLSessionDownloadDelegate.
+// 因为这里, 也是调用对应的方法, 将事件分发到 manager 中去了.
 extension SessionDelegate: URLSessionDownloadDelegate {
     /*
      If you invalidate a session by calling its finishTasksAndInvalidate method, the session waits until after the final task in the session finishes or fails before calling this delegate method. If you call the invalidateAndCancel method, the session calls this delegate method immediately.
@@ -25,7 +26,11 @@ extension SessionDelegate: URLSessionDownloadDelegate {
     }
     
     // 下载过程的回调.
-    public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+    public func urlSession(_ session: URLSession,
+                           downloadTask: URLSessionDownloadTask,
+                           didWriteData bytesWritten: Int64,
+                           totalBytesWritten: Int64,
+                           totalBytesExpectedToWrite: Int64) {
         guard let manager = manager else { return }
         guard let currentURL = downloadTask.currentRequest?.url else { return }
         guard let task = manager.mapTask(currentURL) else {
@@ -40,6 +45,7 @@ extension SessionDelegate: URLSessionDownloadDelegate {
     // 下载完成的回调.
     // Tells the delegate that a download task has finished downloading.
     // 这个方法, 会在 didCompleteWithError 之前进行调用, 但是后续的方法, 还是会继续进行调用的.
+    // 所以在这个方法里面, 只做了文件相关的处理.
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         guard let manager = manager else { return }
         guard let currentURL = downloadTask.currentRequest?.url else { return }
@@ -50,7 +56,7 @@ extension SessionDelegate: URLSessionDownloadDelegate {
         task.didFinishDownloading(task: downloadTask, to: location)
     }
     
-    // 下载失败的回调.
+    // 下载结束的回调.
     public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let manager = manager else { return }
         
@@ -70,5 +76,7 @@ extension SessionDelegate: URLSessionDownloadDelegate {
                 }
             }
         }
+        // downloadTask.didComplete(.network(task: task, error: error))
+        // 最终都是触发该方法, 不过是 URL 的获取方式不同而已.
     }
 }

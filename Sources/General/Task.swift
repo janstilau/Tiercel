@@ -65,6 +65,7 @@ public class Task<TaskType>: NSObject, Codable {
         let currentURL = try container.decode(URL.self, forKey: .currentURL)
         let fileName = try container.decode(String.self, forKey: .fileName)
         protectedState = Protected(State(currentURL: currentURL, fileName: fileName))
+        // 通过, 向 decoder 中藏值的方式, 完成了工具类对象的初始化操作.
         cache = decoder.userInfo[.cache] as? Cache ?? Cache("default")
         operationQueue = decoder.userInfo[.operationQueue] as? DispatchQueue ?? DispatchQueue(label: "com.Tiercel.SessionManager.operationQueue")
         super.init()

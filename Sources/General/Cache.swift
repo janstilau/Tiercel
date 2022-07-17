@@ -32,6 +32,7 @@ public class Cache {
     /// 初始化方法
     /// - Parameters:
     ///   - identifier: 不同的identifier代表不同的下载模块。如果没有自定义下载目录，Cache会提供默认的目录，这些目录跟identifier相关
+    /// 下面的几个属性, 都有着默认的实现.
     ///   - downloadPath: 存放用于DownloadTask持久化的数据，默认提供的downloadTmpPath、downloadFilePath也是在里面
     ///   - downloadTmpPath: 存放下载中的临时文件
     ///   - downloadFilePath: 存放下载完成后的文件
@@ -48,7 +49,6 @@ public class Cache {
         debouncer = Debouncer(queue: ioQueue)
         
         let cacheName = "com.Daniels.Tiercel.Cache.\(identifier)"
-        
         // 这个东西, 就是在外界没有传入下载地址的时候, 当做 Download 的默认值.
         let diskCachePath = Cache.defaultDiskCachePathClosure(cacheName)
         
@@ -191,6 +191,12 @@ extension Cache {
         }
     }
     
+    /*
+     下载, 系统默认的是下载到了 Tmp 目录下, 而这个目录, 会被系统清理的.
+     所以, 在 storeTmpFile 中, 会将 Tmp 目录下的数据, 转存一份到沙盒环境里面.
+     这里, 当使用 ResumeData 恢复下载的时候, 会尝试检查 Temp 下有没有下载文件.
+     如果没有, 会使用沙盒中缓存的文件, 移动到 Temp 中. 因为 ResumeData 的数据是定死的, 所以一定是要移动到 Temp 目录下.
+     */
     internal func retrieveTmpFile(_ tmpFileName: String?) -> Bool {
         return ioQueue.sync {
             guard let tmpFileName = tmpFileName, !tmpFileName.isEmpty else { return false }
@@ -246,7 +252,7 @@ extension Cache {
         }
     }
     
-    // 这里应该叫做 move. 
+    // 这里应该叫做 move.
     internal func storeFile(at srcURL: URL, to dstURL: URL) {
         ioQueue.sync {
             do {
@@ -260,8 +266,8 @@ extension Cache {
         }
     }
     
-    // 这个方法, 会在出错的时候调用. 会有一个备份的动作.
     internal func storeTmpFile(_ tmpFileName: String?) {
+        // 将, Temp 目录下的下载文件, 转移到 Session 的管理目录/Tmp 下.
         ioQueue.sync {
             guard let tmpFileName = tmpFileName, !tmpFileName.isEmpty else { return }
             let tmpPath = (NSTemporaryDirectory() as NSString).appendingPathComponent(tmpFileName)

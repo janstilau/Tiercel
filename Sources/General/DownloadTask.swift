@@ -20,6 +20,8 @@ public class DownloadTask: Task<DownloadTask> {
         var resumeData: Data? {
             didSet {
                 guard let resumeData = resumeData else { return }
+                // 可以从 ResumeData 里面, 获取之前下载的文件的文件名信息.
+                // 当, 有 ResumeData 的时候, 会自动进行文件名的获取操作.
                 tmpFileName = ResumeDataHelper.getTmpFileName(resumeData)
             }
         }
@@ -196,13 +198,16 @@ extension DownloadTask {
                 progress.totalUnitCount = length
             }
             executeControl()
-            // 在, 完成了意向任务之后, 主动调用调度算法.
             operationQueue.async {
+                // 开启下载任务的时候, 发现该文件已经下载过了.
+                // 直接本地完成该任务.
                 self.didComplete(.local)
             }
         } else {
+            // 真正的开启一个下载任务的启动方法在这里.
             // 如果, 有resumeData这个值, 那么
             if let resumeData = resumeData,
+               // 如果有 ResumeData, 首先要恢复原来的下载环境, 具体来说, 就是将原本的下载到 Tmp 目录下的文件数据恢复.
                cache.retrieveTmpFile(tmpFileName) {
                 // retrieveTmpFile 中, 会尝试进行已经下载数据的恢复.
                 if #available(iOS 10.2, *) {
@@ -225,6 +230,7 @@ extension DownloadTask {
             }
             // 真正的, 进行下载任务的开启.
             progress.setUserInfoObject(progress.completedUnitCount, forKey: .fileCompletedCountKey)
+            // 在这里, 真正的进行了下载的任务启动. 
             sessionTask?.resume()
             manager?.maintainTasks(with: .appendRunningTasks(self))
             manager?.storeTasks()
@@ -232,14 +238,39 @@ extension DownloadTask {
         }
     }
     
+    /*
+     实际上, DataTask 本身会有 Suspend 的相关逻辑, 但是这里是 Download. 对于 Download 来说, suspend 就是取消原来的下载, 然后保存 ResumeData 就可以了.
+     这样, 重新 start 的时候, 使用 ResumeData 来重新创建一个下载任务就可以了.
+     */
     internal func suspend(onMainQueue: Bool = true, handler: Handler<DownloadTask>? = nil) {
         guard status == .running || status == .waiting else { return }
         controlExecuter = Executer(onMainQueue: onMainQueue, handler: handler)
         if status == .running {
             status = .willSuspend
+            // 之所以, 这里不使用 Resume, 是以为在 DidComplete 中, Error 信息中会带有 ResumeData 的相关内容.
+            /*
+             Summary
+
+             Cancels a download and calls a callback with resume data for later use.
+
+             Discussion
+             A download can be resumed only if the following conditions are met:
+             The resource has not changed since you first requested it
+             The task is an HTTP or HTTPS GET request // Get 请求
+             The server provides either the ETag or Last-Modified header (or both) in its response
+             The server supports byte-range requests // 支持作用域范围下载.
+             The temporary file hasn’t been deleted by the system in response to disk space pressure // 原有的下载文件没有被删除.
+             Parameters
+
+             completionHandler
+             A completion handler that is called when the download has been successfully canceled.
+             If the download is resumable, the completion handler is provided with a resumeData object. Your app can later pass this object to a session’s downloadTask(withResumeData:) or downloadTask(withResumeData:completionHandler:) method to create a new task that resumes the download where it left off.
+             This block is not guaranteed to execute in a particular thread context. As such, you may want specify an appropriate dispatch queue in which to perform any work.
+             */
             sessionTask?.cancel(byProducingResumeData: { _ in })
         } else {
             status = .willSuspend
+            // 如果, 当前任务还没有开启, 直接本地完成.
             operationQueue.async {
                 self.didComplete(.local)
             }
@@ -354,6 +385,9 @@ extension DownloadTask {
         case let .error(error):
             self.error = error
             var tempStatus = status
+            /*
+             When a transfer error occurs or when you call the cancel(byProducingResumeData:) method, the delegate object or completion handler gets an NSError object. If the transfer is resumable, that error object’s userInfo dictionary contains a value for this key. To resume the transfer, your app can pass that value to the downloadTask(withResumeData:) or downloadTask(withResumeData:completionHandler:) method.
+             */
             if let resumeData = (error as NSError).userInfo[NSURLSessionDownloadTaskResumeData] as? Data {
                 // 在这里, 进行了 ResumeData 的存储动作.
                 self.resumeData = ResumeDataHelper.handleResumeData(resumeData)
@@ -444,7 +478,12 @@ extension DownloadTask {
         }
         NotificationCenter.default.postNotification(name: DownloadTask.didCompleteNotification, downloadTask: self)
     }
-    
+        
+    /*
+     executeControl 的设计思路是, 我要去完成一件事, 并且提供这件事完成的回调.
+     但是我要完成的这件事, 其实是一个异步操作.
+     所以, 作者在这里设计了 controlExecuter 这样的一个存储闭包的方式, 统一在 Task 的 DetermineStatus 的回调里面, 进行 executeControl 的触发.
+     */
     private func executeControl() {
         controlExecuter?.execute(self)
         controlExecuter = nil
@@ -499,6 +538,7 @@ extension DownloadTask {
 
 // MARK: - callback
 extension DownloadTask {
+    // SessionDelegate 会触发到这里, 在这里, 触发一下自己的下载总进度. 
     internal func didWriteData(downloadTask: URLSessionDownloadTask, bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
         // 更新一下自己的进度信息.
         progress.completedUnitCount = totalBytesWritten
@@ -515,7 +555,8 @@ extension DownloadTask {
         guard let statusCode = (task.response as? HTTPURLResponse)?.statusCode,
               acceptableStatusCodes.contains(statusCode)
         else { return }
-        
+        // 将, 下载过程中, Tmp 目录下的文件, 转移到真正的存储目录下.
+        // 然后, 清理一下下载过程中的临时文件.  
         cache.storeFile(at: location, to: URL(fileURLWithPath: filePath))
         cache.removeTmpFile(tmpFileName)
     }

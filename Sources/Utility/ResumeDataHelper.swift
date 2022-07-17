@@ -99,9 +99,12 @@ internal enum ResumeDataHelper {
     }
     
     internal static func getTmpFileName(_ data: Data) -> String? {
-        guard let resumeDictionary = ResumeDataHelper.getResumeDictionary(data),
-              let version = resumeDictionary[infoVersionKey] as? Int
+        guard
+            let resumeDictionary = ResumeDataHelper.getResumeDictionary(data),
+            let version = resumeDictionary[infoVersionKey] as? Int
         else { return nil }
+        
+        // ResumeData 就是一个 Dict 文件表示. 使用特定的 Key, 获取 Resume 的对应文件就可以了. 
         if version > 1 {
             return resumeDictionary[infoTempFileNameKey] as? String
         } else {
