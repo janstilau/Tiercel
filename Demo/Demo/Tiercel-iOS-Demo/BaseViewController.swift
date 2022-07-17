@@ -64,6 +64,7 @@ class BaseViewController: UIViewController {
         button.title = tableView.isEditing ? "完成" : "编辑"
     }
     
+    // 当, 应用退到后台的时候, 是不会触发这里的. 
     func updateViews() {
         totalTasksLabel.text = "总任务：\(sessionManager.succeededTasks.count)/\(sessionManager.tasks.count)"
         totalSpeedLabel.text = "总速度：\(sessionManager.speedString)"

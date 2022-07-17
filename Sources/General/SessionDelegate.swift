@@ -21,6 +21,15 @@ extension SessionDelegate: URLSessionDownloadDelegate {
      
      When your app later receives a URLSessionDidFinishEventsForBackgroundURLSession: message, this indicates that all messages previously enqueued for this session have been delivered, and that it is now safe to invoke the previously stored completion handler or to begin any internal updates that may result in invoking the completion handler.
      */
+    
+    /*
+     当, 在后台下载成功之后, 会触发 App Delegate 的方法, 然后依次触发了.
+     urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL)
+     urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?)
+     urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession
+     
+     也就是说, 只会触发这几个结束节点的事件给 Delegate.
+     */
     public func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
         manager?.didFinishEvents(forBackgroundURLSession: session)
     }

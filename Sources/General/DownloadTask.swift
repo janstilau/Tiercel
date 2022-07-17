@@ -552,6 +552,7 @@ extension DownloadTask {
         response = downloadTask.response as? HTTPURLResponse
         progressExecuter?.execute(self)
         // 更新一下, 总的进度信息.
+        // Data Task 的进度变化了, 会主动的触发 Manager 来更新自己的进度.
         manager?.updateProgress()
         NotificationCenter.default.postNotification(name: DownloadTask.runningNotification, downloadTask: self)
     }
