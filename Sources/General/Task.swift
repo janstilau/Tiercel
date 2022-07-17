@@ -12,8 +12,9 @@ public class Task<TaskType>: NSObject, Codable {
     
     public internal(set) weak var manager: SessionManager?
     
+    // 这是从 SessionManager 中获取到的.
     internal var cache: Cache
-    
+    // 这是从 SessionManager 中获取到的.
     internal var operationQueue: DispatchQueue
     
     public let url: URL
@@ -34,6 +35,9 @@ public class Task<TaskType>: NSObject, Codable {
         self.headers = headers
     }
     
+    // 虽然从数据结构上, 是专门一个 State 包裹住了大部分内的数据.
+    // 但是在归档接档的时候, 完全可以将这一层去除掉了.
+    // 只要归档, 解档的时候, 能够还原出数据内容就可以了.
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(url, forKey: .url)
@@ -59,6 +63,7 @@ public class Task<TaskType>: NSObject, Codable {
         }
     }
     
+    // 解档的时候, 通过 Archive 将所有需要的数据解出, 然后统一使用 write 进行数据的赋值.
     public required init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         url = try container.decode(URL.self, forKey: .url)
@@ -96,7 +101,6 @@ public class Task<TaskType>: NSObject, Codable {
     }
     
     internal func execute(_ Executer: Executer<TaskType>?) {
-        
     }
 }
 
@@ -118,8 +122,8 @@ extension Task {
     }
     
     enum CompletionType {
-        case local
-        case network(task: URLSessionTask, error: Error?)
+        case local // 程序所控制的, 逻辑内操作.
+        case network(task: URLSessionTask, error: Error?) // 网络请求引起的回调.
     }
     
     enum InterruptType {
@@ -129,7 +133,7 @@ extension Task {
     }
     
     internal struct State {
-        var session: URLSession?
+        var session: URLSession? //
         var headers: [String: String]?
         var verificationCode: String?
         var verificationType: FileChecksumHelper.VerificationType = .md5
@@ -139,20 +143,21 @@ extension Task {
         var currentURL: URL
         var startDate: Double = 0
         var endDate: Double = 0
-        var speed: Int64 = 0
+        var speed: Int64 = 0 // 不归档.
         var fileName: String
-        var timeRemaining: Int64 = 0
+        var timeRemaining: Int64 = 0 // 不归档
         var error: Error?
         
+        // 以下不归档.
         var progressExecuter: Executer<TaskType>?
         var successExecuter: Executer<TaskType>?
         var failureExecuter: Executer<TaskType>?
+        var completionExecuter: Executer<TaskType>?
+        var validateExecuter: Executer<TaskType>?
         /*
          Suspend, Cancle, Remove 操作的时候, 会给里面赋值.
          */
         var controlExecuter: Executer<TaskType>?
-        var completionExecuter: Executer<TaskType>?
-        var validateExecuter: Executer<TaskType>?
     }
 }
 
@@ -287,6 +292,7 @@ extension Task {
 }
 
 extension Task {
+    // 延续 Alamofire 里面的设计思路, 所有的这些, 都是进行回调的存储.
     @discardableResult
     public func progress(onMainQueue: Bool = true, handler: @escaping Handler<TaskType>) -> Self {
         progressExecuter = Executer(onMainQueue: onMainQueue, handler: handler)

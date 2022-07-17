@@ -56,6 +56,7 @@ public class SessionManager {
         var shouldCreatSession: Bool = false
         var timer: DispatchSourceTimer?
         var status: Status = .waiting
+        // 按序进行的排列.
         var tasks: [DownloadTask] = []
         var taskMapper: [String: DownloadTask] = [String: DownloadTask]()
         var urlMapper: [URL: URL] = [URL: URL]()
@@ -208,9 +209,9 @@ public class SessionManager {
         self.operationQueue = operationQueue
         self.cache = cache ?? Cache(identifier)
         self.cache.manager = self
+        // 在这里, 将所有的任务都从文件系统中恢复了.
         self.cache.retrieveAllTasks().forEach { maintainTasks(with: .append($0)) }
         succeededTasks = tasks.filter { $0.status == .succeeded }
-        log(.sessionManager("retrieveTasks", manager: self))
         protectedState.write { state in
             state.tasks.forEach {
                 $0.manager = self
@@ -569,7 +570,7 @@ extension SessionManager {
 
 // MARK: - total tasks control
 extension SessionManager {
-    
+    // 全部开始下载任务.
     public func totalStart(onMainQueue: Bool = true, handler: Handler<SessionManager>? = nil) {
         operationQueue.async {
             self.tasks.forEach { task in
@@ -622,7 +623,6 @@ extension SessionManager {
 extension SessionManager {
     
     internal func maintainTasks(with action: MaintainTasksAction) {
-        
         switch action {
         case let .append(task):
             protectedState.write { state in
@@ -703,7 +703,6 @@ extension SessionManager {
     
     
     private func shouldComplete() -> Bool {
-        
         let isSucceeded = self.tasks.allSatisfy { $0.status == .succeeded }
         let isCompleted = isSucceeded ? isSucceeded :
         self.tasks.allSatisfy { $0.status == .succeeded || $0.status == .failed }
@@ -775,7 +774,7 @@ extension SessionManager {
     }
     
     // DownloadTask 里面, 会触发 Manager 的 Schedule 的操作.
-    internal func reSchedule(fromRunningTask: Bool) {
+    internal func reSchedule(fromDownloading: Bool) {
         if isControlNetworkActivityIndicator {
             DispatchQueue.tr.executeOnMain {
                 UIApplication.shared.isNetworkActivityIndicatorVisible = false
@@ -849,7 +848,7 @@ extension SessionManager {
         
         // 如果是 fromRunningTask, 就是下载过程中, 而不是用户主动行为触发的. 这种时候, 要进行任务调度, 进行新的任务.
         // 否则, 是用户点击触发的, 那么上面的状态修改了之后, 不应该触发后续的行为.
-        if fromRunningTask {
+        if fromDownloading {
             // next task
             operationQueue.async {
                 self.startNextTask()

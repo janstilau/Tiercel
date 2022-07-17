@@ -60,6 +60,8 @@ public class Cache {
         createDirectory()
         // 第一次看到, userInfo 真正的被使用到了
         decoder.userInfo[.cache] = self
+        
+        print("The Cache Path is \(downloadPath)")
     }
     
     public func invalidate() {
@@ -168,7 +170,7 @@ extension Cache {
     internal func retrieveAllTasks() -> [DownloadTask] {
         // 因为这是一个同步函数, 所以这里选择了 sync.
         return ioQueue.sync {
-            let path = (downloadPath as NSString).appendingPathComponent("\(identifier)_Tasks.plist")
+            let path = (downloadPath as NSString).appendingPathComponent("\(identifier)_Tasks.json")
             if fileManager.fileExists(atPath: path) {
                 do {
                     let url = URL(fileURLWithPath: path)
@@ -230,14 +232,28 @@ extension Cache {
     }
 }
 
-
+/*
+ // 在里面, 是将当前的状态也存储到了文件系统里面. 
+"super": {
+     "url": "https:\/\/officecdn-microsoft-com.akamaized.net\/pr\/C1297A47-86C4-4C1F-97FA-950631F94777\/MacAutoupdate\/Microsoft_Office_16.24.19041401_Installer.pkg",
+     "status": "running",
+     "endDate": 0,
+     "fileName": "66ad306db5e053544041f8b64cdfbaac.pkg",
+     "startDate": 1658079710.3194971,
+     "verificationType": 0,
+     "totalBytes": 1761188833,
+     "completedBytes": 3069533,
+     "validation": 0,
+     "currentURL": "https:\/\/officecdn-microsoft-com.akamaized.net\/pr\/C1297A47-86C4-4C1F-97FA-950631F94777\/MacAutoupdate\/Microsoft_Office_16.24.19041401_Installer.pkg"
+ },
+ */
 // MARK: - store
 extension Cache {
     // 把所有的下载任务, 当做了文件进行了存储.
     internal func storeTasks(_ tasks: [DownloadTask]) {
         // 把, 所有的任务, 都使用文件进行了存储.
         debouncer.execute(label: "storeTasks", wallDeadline: .now() + 0.2) {
-            var path = (self.downloadPath as NSString).appendingPathComponent("\(self.identifier)_Tasks.plist")
+            var path = (self.downloadPath as NSString).appendingPathComponent("\(self.identifier)_Tasks.json")
             do {
                 let data = try self.encoder.encode(tasks)
                 let url = URL(fileURLWithPath: path)
@@ -247,7 +263,7 @@ extension Cache {
                                          error: TiercelError.cacheError(reason: .cannotEncodeTasks(path: path,
                                                                                                    error: error))))
             }
-            path = (self.downloadPath as NSString).appendingPathComponent("\(self.identifier)Tasks.plist")
+            path = (self.downloadPath as NSString).appendingPathComponent("\(self.identifier)Tasks.json")
             try? self.fileManager.removeItem(atPath: path)
         }
     }
