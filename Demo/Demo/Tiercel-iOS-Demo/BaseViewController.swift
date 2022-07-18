@@ -32,6 +32,7 @@ class BaseViewController: UIViewController {
         let free = FileManager.default.tr.freeDiskSpaceInBytes / 1024 / 1024
         print("手机剩余储存空间为： \(free)MB")
         
+        // 可以直接修改 logger 的值, 修改 looger 的行为.
         sessionManager.logger.option = .default
         
         updateSwicth()
@@ -47,7 +48,6 @@ class BaseViewController: UIViewController {
                            forCellReuseIdentifier: DownloadTaskCell.reuseIdentifier)
         tableView.rowHeight = UITableView.automaticDimension
         tableView.estimatedRowHeight = 164
-        
         configureNavigationItem()
     }
     
@@ -65,7 +65,7 @@ class BaseViewController: UIViewController {
         button.title = tableView.isEditing ? "完成" : "编辑"
     }
     
-    // 当, 应用退到后台的时候, 是不会触发这里的. 
+    // 当, 应用退到后台的时候, 是不会触发这里的.
     func updateViews() {
         totalTasksLabel.text = "成功任务：\(sessionManager.succeededTasks.count)/ 总任务: \(sessionManager.tasks.count)"
         totalSpeedLabel.text = "总速度：\(sessionManager.speedString)"
@@ -84,7 +84,6 @@ class BaseViewController: UIViewController {
         // 设置 manager 的回调
         sessionManager.progress { [weak self] (manager) in
             self?.updateViews()
-            
         }.completion { [weak self] manager in
             self?.updateViews()
             if manager.status == .succeeded {
@@ -169,12 +168,12 @@ extension BaseViewController: UITableViewDataSource, UITableViewDelegate {
         cell.tapClosure = { [weak self] cell in
             guard let task = self?.sessionManager.tasks.safeObject(at: indexPath.row) else { return }
             switch task.status {
-                case .waiting, .running:
-                    self?.sessionManager.suspend(task)
-                case .suspended, .failed:
-                    self?.sessionManager.start(task)
-                default:
-                    break
+            case .waiting, .running:
+                self?.sessionManager.suspend(task)
+            case .suspended, .failed:
+                self?.sessionManager.start(task)
+            default:
+                break
             }
         }
         

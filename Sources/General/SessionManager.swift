@@ -25,6 +25,8 @@ public class SessionManager {
     
     public var completionHandler: (() -> Void)?
     
+    // 因为 Swfit 的语言特性, 其实是在 SessionConfiguration 中任何值被修改之后, 都会触发 set 方法.
+    // 配置修改了之后, 会造成任务的停止. 
     public var configuration: SessionConfiguration {
         get { protectedState.wrappedValue.configuration }
         set {
@@ -45,14 +47,16 @@ public class SessionManager {
         var logger: Logable
         var isControlNetworkActivityIndicator: Bool = true
         var configuration: SessionConfiguration {
+            // 每当, Config 发生改变了之后, 其实应该触发所使用的 URLSession 的重新生成才对.
             didSet {
                 guard !shouldCreatSession else { return }
                 shouldCreatSession = true
                 if status == .running {
-                    if configuration.maxConcurrentTasksLimit <= oldValue.maxConcurrentTasksLimit {
-                        uncompletedTasks = runningTasks + tasks.filter { $0.status == .waiting }
+                    if configuration.maxConcurrentTasksLimit
+                        <= oldValue.maxConcurrentTasksLimit {
+                        needRelaunchingTasks = runningTasks + tasks.filter { $0.status == .waiting }
                     } else {
-                        uncompletedTasks = tasks.filter { $0.status == .waiting || $0.status == .running }
+                        needRelaunchingTasks = tasks.filter { $0.status == .waiting || $0.status == .running }
                     }
                 } else {
                     session?.invalidateAndCancel()
@@ -69,7 +73,7 @@ public class SessionManager {
         
         var tasks: [DownloadTask] = []
         var runningTasks: [DownloadTask] = []
-        var uncompletedTasks: [DownloadTask] = []
+        var needRelaunchingTasks: [DownloadTask] = []
         var succeededTasks: [DownloadTask] = []
         var speed: Int64 = 0
         var timeRemaining: Int64 = 0
@@ -138,9 +142,9 @@ public class SessionManager {
         set { protectedState.write { $0.runningTasks = newValue } }
     }
     
-    private var uncompletedTasks: [DownloadTask] {
-        get { protectedState.wrappedValue.uncompletedTasks }
-        set { protectedState.write { $0.uncompletedTasks = newValue } }
+    private var needRelaunchingTasks: [DownloadTask] {
+        get { protectedState.wrappedValue.needRelaunchingTasks }
+        set { protectedState.write { $0.needRelaunchingTasks = newValue } }
     }
     
     public private(set) var succeededTasks: [DownloadTask] {
@@ -478,13 +482,12 @@ extension SessionManager {
                         handler: Handler<DownloadTask>? = nil) {
         task.controlExecuter = Executer(onMainQueue: onMainQueue, handler: handler)
         didStart()
-        // 不太明白这里的含义.
         if !shouldCreatSession {
             task.download()
         } else {
             task.status = .suspended
-            if !uncompletedTasks.contains(task) {
-                uncompletedTasks.append(task)
+            if !needRelaunchingTasks.contains(task) {
+                needRelaunchingTasks.append(task)
             }
         }
     }
@@ -724,14 +727,14 @@ extension SessionManager {
             }
             self.storeTasks()
             //  处理mananger状态
-            if !self.shouldComplete() {
-                self.shouldSuspend()
+            if !self.isAllCompleted() {
+                self.suspendIfNeed()
             }
         }
     }
     
     // get 函数内, 有了太多的副作用.
-    private func shouldComplete() -> Bool {
+    private func isAllCompleted() -> Bool {
         let isSucceeded = self.tasks.allSatisfy { $0.status == .succeeded }
         let isCompleted = isSucceeded ? isSucceeded :
         self.tasks.allSatisfy { $0.status == .succeeded || $0.status == .failed }
@@ -749,7 +752,7 @@ extension SessionManager {
     
     
     
-    private func shouldSuspend() {
+    private func suspendIfNeed() {
         let isSuspended = tasks.allSatisfy { $0.status == .suspended || $0.status == .succeeded || $0.status == .failed }
         
         if isSuspended {
@@ -818,7 +821,7 @@ extension SessionManager {
             if tasks.isEmpty {
                 status = .removed
                 executeControl()
-                ending(false)
+                markAllTaskEnding(false)
             }
             return
         }
@@ -830,7 +833,7 @@ extension SessionManager {
             if tasks.count == succeededTasksCount {
                 status = .canceled
                 executeControl()
-                ending(false)
+                markAllTaskEnding(false)
                 return
             }
             return
@@ -848,11 +851,12 @@ extension SessionManager {
             progressExecuter?.execute(self)
             let isSucceeded = tasks.allSatisfy { $0.status == .succeeded }
             status = isSucceeded ? .succeeded : .failed
-            ending(isSucceeded)
+            markAllTaskEnding(isSucceeded)
             return
         }
         
         // suspended
+        // 当, Config 变化了之后, 会停止所有的任务.
         let isSuspended = tasks.allSatisfy { $0.status == .suspended ||
             $0.status == .succeeded ||
             $0.status == .failed }
@@ -868,7 +872,7 @@ extension SessionManager {
                 session = nil
             } else {
                 executeControl()
-                ending(false)
+                markAllTaskEnding(false)
             }
             return
         }
@@ -889,7 +893,7 @@ extension SessionManager {
         }
     }
     
-    private func ending(_ isSucceeded: Bool) {
+    private func markAllTaskEnding(_ isSucceeded: Bool) {
         executeCompletion(isSucceeded)
         storeTasks()
         invalidateTimer()
@@ -1027,8 +1031,8 @@ extension SessionManager {
     internal func didBecomeInvalidation(withError error: Error?) {
         createSession { [weak self] in
             guard let self = self else { return }
-            self.uncompletedTasks.forEach { self._start($0) }
-            self.uncompletedTasks.removeAll()
+            self.needRelaunchingTasks.forEach { self._start($0) }
+            self.needRelaunchingTasks.removeAll()
         }
     }
     
