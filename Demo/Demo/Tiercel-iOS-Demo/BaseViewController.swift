@@ -67,7 +67,7 @@ class BaseViewController: UIViewController {
     
     // 当, 应用退到后台的时候, 是不会触发这里的. 
     func updateViews() {
-        totalTasksLabel.text = "总任务：\(sessionManager.succeededTasks.count)/\(sessionManager.tasks.count)"
+        totalTasksLabel.text = "成功任务：\(sessionManager.succeededTasks.count)/ 总任务: \(sessionManager.tasks.count)"
         totalSpeedLabel.text = "总速度：\(sessionManager.speedString)"
         timeRemainingLabel.text = "剩余时间： \(sessionManager.timeRemainingString)"
         let per = String(format: "%.2f", sessionManager.progress.fractionCompleted)

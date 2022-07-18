@@ -2,7 +2,7 @@ import Foundation
 
 public enum LogOption {
     case `default`
-    case none
+    case none // 选择该值, 可以打断 Logger 的所有 Log 行为. 
 }
 
 public enum LogType {

@@ -64,10 +64,10 @@ public class SessionManager {
         var shouldCreatSession: Bool = false
         var timer: DispatchSourceTimer?
         var status: Status = .waiting
-        // 按序进行的排列.
-        var tasks: [DownloadTask] = []
         var taskMapper: [String: DownloadTask] = [String: DownloadTask]()
         var urlMapper: [URL: URL] = [URL: URL]()
+        
+        var tasks: [DownloadTask] = []
         var runningTasks: [DownloadTask] = []
         var uncompletedTasks: [DownloadTask] = []
         var succeededTasks: [DownloadTask] = []
@@ -205,6 +205,7 @@ public class SessionManager {
                 cache: Cache? = nil,
                 operationQueue: DispatchQueue = DispatchQueue(label: "com.Tiercel.SessionManager.operationQueue",
                                                               autoreleaseFrequency: .workItem)) {
+        
         let bundleIdentifier = Bundle.main.bundleIdentifier ?? "com.Daniels.Tiercel"
         self.identifier = "\(bundleIdentifier).\(identifier)"
         protectedState = Protected(
@@ -216,12 +217,13 @@ public class SessionManager {
         self.cache = cache ?? Cache(identifier)
         self.cache.manager = self
         
-        // 在这里, 将所有的任务都从文件系统中恢复了.
-        // append 仅仅是将, 任务添加到 SessionManager 进行管理, 但是并不会直接进行触发 Task 的 resume.
-        // 如果, 下载进程还存在, 那么对应的 Session Delegate 会继续触发, 否则, 这里是需要手动的进行停止的下载任务 Resume 才可以.
+        /*
+         在 SessionManager 的初始化过程中, 会到对应的文件位置, 读取文件, 恢复对于下载任务的管理.
+         任务的状态也在文件系统里面, 所以, tasks 里面会有所有的任务信息.
+         */
         self.cache.retrieveAllTasks().forEach { maintainTasks(with: .append($0)) }
-        
         succeededTasks = tasks.filter { $0.status == .succeeded }
+        
         protectedState.write { state in
             state.tasks.forEach {
                 $0.manager = self
@@ -374,6 +376,7 @@ extension SessionManager {
         var urlSet = Set<URL>()
         var uniqueTasks = [DownloadTask]()
         
+        // 批量的, 将任务添加到自己的管理中.
         operationQueue.sync {
             for (index, url) in urls.enumerated() {
                 let fileName = fileNames?.safeObject(at: index)
@@ -407,6 +410,7 @@ extension SessionManager {
             storeTasks()
             Executer(onMainQueue: onMainQueue, handler: handler).execute(self)
             // 将, 刚刚添加进入的所有的任务, 一次性开启下载操作.
+            // 但是不会真正的全部开启, 内部会有对于最大可开启量的限制的.
             operationQueue.async {
                 uniqueTasks.forEach {
                     if $0.status != .succeeded {
@@ -434,6 +438,7 @@ extension SessionManager {
     
     internal func mapTask(_ currentURL: URL) -> DownloadTask? {
         protectedState.read {
+            // URLSessionTask 的 URL 可能会变, 应该是有着重定向的原因.
             let url = $0.urlMapper[currentURL] ?? currentURL
             return $0.taskMapper[url.absoluteString]
         }
@@ -473,6 +478,7 @@ extension SessionManager {
                         handler: Handler<DownloadTask>? = nil) {
         task.controlExecuter = Executer(onMainQueue: onMainQueue, handler: handler)
         didStart()
+        // 不太明白这里的含义.
         if !shouldCreatSession {
             task.download()
         } else {
@@ -639,6 +645,7 @@ extension SessionManager {
     internal func maintainTasks(with action: MaintainTasksAction) {
         switch action {
         case let .append(task):
+            // 这是任务归到 Session Manager 下载的最初起点.
             protectedState.write { state in
                 state.tasks.append(task)
                 state.taskMapper[task.url.absoluteString] = task
@@ -688,6 +695,8 @@ extension SessionManager {
     }
     
     internal func updateUrlMapper(with task: DownloadTask) {
+        // 如果 DataTask 的 URL 发生了改变, 那么这里会进行一次映射.
+        // Task.url 永远是最初的 url.
         protectedState.write { $0.urlMapper[task.currentURL] = task.url }
     }
     
@@ -698,19 +707,19 @@ extension SessionManager {
         /*
          之所以会出现这样一个奇怪的调用, 是因为真正的下载任务, 是在另外的一个线程里面.
          当 App 重启之后, 同名的 Session 可以通过 getTasksWithCompletionHandler 获取到当前正在下载的任务.
-         所以, 在 App 重启之后, 可以第一时间, 根据当前的状态, 进行
+         所以, 在 App 重启之后, 可以第一时间, 根据当前的状态, 进行当前正在下载的任务的管理.
          */
         session?.getTasksWithCompletionHandler { [weak self] (dataTasks, uploadTasks, downloadTasks) in
             guard let self = self else { return }
-            downloadTasks.forEach { downloadTask in
-                if downloadTask.state == .running,
-                   let currentURL = downloadTask.currentRequest?.url,
+            downloadTasks.forEach { sessionDownloadTask in
+                if sessionDownloadTask.state == .running,
+                   let currentURL = sessionDownloadTask.currentRequest?.url,
                    let task = self.mapTask(currentURL) {
                     // didStart 是触发 Manager 开始下载的回调.
                     self.didStart()
                     self.maintainTasks(with: .appendRunningTasks(task))
                     task.status = .running
-                    task.sessionTask = downloadTask
+                    task.sessionTask = sessionDownloadTask
                 }
             }
             self.storeTasks()
@@ -721,7 +730,7 @@ extension SessionManager {
         }
     }
     
-    
+    // get 函数内, 有了太多的副作用.
     private func shouldComplete() -> Bool {
         let isSucceeded = self.tasks.allSatisfy { $0.status == .succeeded }
         let isCompleted = isSucceeded ? isSucceeded :
