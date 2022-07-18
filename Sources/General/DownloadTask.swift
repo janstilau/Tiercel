@@ -166,8 +166,10 @@ extension DownloadTask {
                 // shouldRun 中有着对于最大并发数的考虑. 所以实际上, 还是不会超过最大并发数的. 
                 if manager.shouldRun {
                     reset()
+                    // 真正的触发下载网络请求的部分.
                     startDownload(fileExists: false)
                 } else {
+                    // 在 Task 完成的代码里面, 会触发 manager 的 reSchedule. 在那里会触发 waiting 状态的任务重新开启.
                     status = .waiting
                     progressExecuter?.execute(self)
                     executeControl()
@@ -249,6 +251,7 @@ extension DownloadTask {
      */
     internal func suspend(onMainQueue: Bool = true, handler: Handler<DownloadTask>? = nil) {
         guard status == .running || status == .waiting else { return }
+        
         controlExecuter = Executer(onMainQueue: onMainQueue, handler: handler)
         if status == .running {
             status = .willSuspend
@@ -310,7 +313,8 @@ extension DownloadTask {
         }
     }
     
-    internal func update(_ newHeaders: [String: String]? = nil, newFileName: String? = nil) {
+    internal func update(_ newHeaders: [String: String]? = nil,
+                         newFileName: String? = nil) {
         headers = newHeaders
         if let newFileName = newFileName,
            !newFileName.isEmpty {
@@ -513,14 +517,14 @@ extension DownloadTask {
     internal func updateSpeedAndTimeRemaining() {
         
         let dataCount = progress.completedUnitCount
-        let lastData: Int64 = progress.userInfo[.fileCompletedCountKey] as? Int64 ?? 0
+        let lastCompleteCount: Int64 = progress.userInfo[.fileCompletedCountKey] as? Int64 ?? 0
         
-        if dataCount > lastData {
-            let speed = dataCount - lastData
+        if dataCount > lastCompleteCount {
+            let speed = dataCount - lastCompleteCount
             updateTimeRemaining(speed)
         }
+        // 可以通过 setUserInfoObject 这种方式, 藏一些值到 Progress 实例中.
         progress.setUserInfoObject(dataCount, forKey: .fileCompletedCountKey)
-        
     }
     
     // timeRemaining 的多少, 是根据 Speed 以及剩余量来完成的.

@@ -3,11 +3,14 @@ import UIKit
 public class SessionManager {
     /*
      添加下载任务, 和添加正在下载的任务是不同的.
+     
      添加任务, 是将任务添加到备用下载任务中. 还没有真正的开启.
      添加正在下载的任务, 是真正的开始进行了下载, 这是在 Task 真正开启下载过程的时候, 会触发 appendRunningTasks
      success 是 下载成功了, Task 真正下载成功的时候, 会触发 succeeded
      删除正在下载的任务, 是任务结束下载的时候触发. removeRunningTasks
      删除任务, 是用户主动点击了 cancel, 或者 remove 的时候触发.
+     
+     在这个类库里面, 下载成功的任务, 还是会保留在 task 列表里面.
      */
     enum MaintainTasksAction {
         case append(DownloadTask)
@@ -26,7 +29,11 @@ public class SessionManager {
     public var completionHandler: (() -> Void)?
     
     // 因为 Swfit 的语言特性, 其实是在 SessionConfiguration 中任何值被修改之后, 都会触发 set 方法.
-    // 配置修改了之后, 会造成任务的停止. 
+    // 配置修改了之后, 会造成任务的停止.
+    // 但已经开启的任务, 不会立马进行停止, 而是调用 task 的 suspend 方法, 在 reSchedule 里面, 判断所有的任务停止了之后, 才会调用 session 的 invalidate.
+    // 在 Session invalidate 的 delegate 触发了之后, 才会在里面, 重新生成 Session, 然后把之前暂停的任务, 重新触发.
+    // 包括在暂停过程中, 新添加的任务, 也是如此.
+    // 因为网络相关 API 的延时性, 所以在这个库里面, 有很多的 will 状态, 在这些 will 状态到真正的 状态改变的过程中, 是通过各种回调方法, 来进行了状态维护.
     public var configuration: SessionConfiguration {
         get { protectedState.wrappedValue.configuration }
         set {
@@ -69,12 +76,22 @@ public class SessionManager {
         var timer: DispatchSourceTimer?
         var status: Status = .waiting
         var taskMapper: [String: DownloadTask] = [String: DownloadTask]()
+        // Task 的 CurrentRequest 可能改变, 也就是可能会出现重定向的行为.
+        // 在 taskMapper, 以及 DownloadTask 里面, 存储的是 originURL.
+        // urlMapper 里面, 存储的是 重定向后的 URL, 和 OriginURL 的映射关系.
         var urlMapper: [URL: URL] = [URL: URL]()
         
+        // 所有的, 被 DownloadSessionManager 管理的 Task. 包括下载完成, 失败的.
         var tasks: [DownloadTask] = []
+        // 正在被下载的 Task
         var runningTasks: [DownloadTask] = []
-        var needRelaunchingTasks: [DownloadTask] = []
+        // 下载成功的任务.
         var succeededTasks: [DownloadTask] = []
+        
+        // 之前 Session Invalidate 的时刻, 正在下载的任务, 以及还没有生产新的 URLSession 状态下, 新添加的下载任务.
+        var needRelaunchingTasks: [DownloadTask] = []
+        
+        // 当前的下载速率, 这是通过定时器回调计算出来的.
         var speed: Int64 = 0
         var timeRemaining: Int64 = 0
         
@@ -108,7 +125,7 @@ public class SessionManager {
         set { protectedState.write { $0.session = newValue } }
     }
     
-    private var shouldCreatSession: Bool {
+    private var currentURLSessionIsDirty: Bool {
         get { protectedState.wrappedValue.shouldCreatSession }
         set { protectedState.write { $0.shouldCreatSession = newValue } }
     }
@@ -124,7 +141,9 @@ public class SessionManager {
         get { protectedState.wrappedValue.status }
         set {
             protectedState.write { $0.status = newValue }
-            if newValue == .willSuspend || newValue == .willCancel || newValue == .willRemove {
+            if newValue == .willSuspend ||
+                newValue == .willCancel ||
+                newValue == .willRemove {
                 return
             }
             log(.sessionManager(newValue.rawValue, manager: self))
@@ -153,6 +172,7 @@ public class SessionManager {
     }
     
     private let _progress = Progress()
+    // 每次, 获取 progress 的时候, 都会更新一下 _progress 中的数值.
     public var progress: Progress {
         _progress.completedUnitCount = tasks.reduce(0, { $0 + $1.progress.completedUnitCount })
         _progress.totalUnitCount = tasks.reduce(0, { $0 + $1.progress.totalUnitCount })
@@ -220,7 +240,6 @@ public class SessionManager {
         self.operationQueue = operationQueue
         self.cache = cache ?? Cache(identifier)
         self.cache.manager = self
-        
         /*
          在 SessionManager 的初始化过程中, 会到对应的文件位置, 读取文件, 恢复对于下载任务的管理.
          任务的状态也在文件系统里面, 所以, tasks 里面会有所有的任务信息.
@@ -237,9 +256,10 @@ public class SessionManager {
             }
             state.shouldCreatSession = true
         }
+        
         operationQueue.sync {
             createSession()
-            restoreStatus()
+            retriveRuningTaskInBGDownloading()
         }
     }
     
@@ -255,7 +275,7 @@ public class SessionManager {
     }
     
     private func createSession(_ completion: (() -> ())? = nil) {
-        guard shouldCreatSession else { return }
+        guard currentURLSessionIsDirty else { return }
         
         // 最为重要的部分, 使用 background 进行了下载的动作.
         /*
@@ -317,6 +337,7 @@ extension SessionManager {
                          fileName: String? = nil,
                          onMainQueue: Bool = true,
                          handler: Handler<DownloadTask>? = nil) -> DownloadTask? {
+        // 处理 Throw 是一个应该习以为常的事情.
         do {
             let validURL = try url.asURL()
             var task: DownloadTask!
@@ -448,8 +469,6 @@ extension SessionManager {
         }
     }
     
-    
-    
     /// 开启任务
     /// 会检查存放下载完成的文件中是否存在跟fileName一样的文件
     /// 如果存在则不会开启下载，直接调用task的successHandler
@@ -482,7 +501,7 @@ extension SessionManager {
                         handler: Handler<DownloadTask>? = nil) {
         task.controlExecuter = Executer(onMainQueue: onMainQueue, handler: handler)
         didStart()
-        if !shouldCreatSession {
+        if !currentURLSessionIsDirty {
             task.download()
         } else {
             task.status = .suspended
@@ -703,7 +722,7 @@ extension SessionManager {
         protectedState.write { $0.urlMapper[task.currentURL] = task.url }
     }
     
-    private func restoreStatus() {
+    private func retriveRuningTaskInBGDownloading() {
         if self.tasks.isEmpty {
             return
         }
@@ -762,7 +781,7 @@ extension SessionManager {
             status = .suspended
             executeControl()
             executeCompletion(false)
-            if shouldCreatSession {
+            if currentURLSessionIsDirty {
                 session?.invalidateAndCancel()
                 session = nil
             }
@@ -790,7 +809,7 @@ extension SessionManager {
     internal func didCancelOrRemove(_ task: DownloadTask) {
         maintainTasks(with: .remove(task))
         
-        // 处理使用单个任务操作移除最后一个task时，manager状态
+        // 没太明白这里的逻辑. ???
         if tasks.isEmpty {
             if task.status == .canceled {
                 status = .willCancel
@@ -867,10 +886,13 @@ extension SessionManager {
                 return
             }
             status = .suspended
-            if shouldCreatSession {
+            // 如果, 所有的任务都停止了, 并且 shouldCreatSession
+            // 那么就是 config 变化导致的停止. 废弃当前的 Session, 新创建 urlSession, 重新开启由于 Config 变化导致suspend 的任务
+            if currentURLSessionIsDirty {
                 session?.invalidateAndCancel()
                 session = nil
             } else {
+                // 否则, 就是任务都结束了, 执行结束的状态改变就可以了.
                 executeControl()
                 markAllTaskEnding(false)
             }
@@ -947,6 +969,7 @@ extension SessionManager {
         } else {
             timeRemaining = 0
         }
+        
         protectedState.write {
             $0.speed = speed
             $0.timeRemaining = Int64(timeRemaining)
@@ -959,6 +982,7 @@ extension SessionManager {
 }
 
 // MARK: - closure
+// 动作的收集过程. 
 extension SessionManager {
     @discardableResult
     public func progress(onMainQueue: Bool = true, handler: @escaping Handler<SessionManager>) -> Self {
