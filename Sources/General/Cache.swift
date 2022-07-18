@@ -5,6 +5,7 @@ public class Cache {
     
     private let ioQueue: DispatchQueue
     
+    // 该功能, 目前仅仅是用到了 StoreTasks 的实现里面. 存储任务的当前状态, 可能会是一个数据类过大的事情, 应该减少对应的频次.
     private var debouncer: Debouncer
     
     public let downloadPath: String
@@ -19,9 +20,10 @@ public class Cache {
     
     private let encoder = JSONEncoder()
     
-    internal weak var manager: SessionManager?
-    
     private let decoder = JSONDecoder()
+    
+    // 目前, 该值仅仅用在了 Log 系统里面.
+    internal weak var manager: SessionManager?
     
     public static func defaultDiskCachePathClosure(_ cacheName: String) -> String {
         let dstPath = NSSearchPathForDirectoriesInDomains(.cachesDirectory, .userDomainMask, true).first!
@@ -42,7 +44,7 @@ public class Cache {
                 downloadFilePath: String? = nil) {
         self.identifier = identifier
         
-        // ioQueue 是一个串行队列.
+        // ioQueue 是一个串行队列. 这个队列, 是和 SessionManager 中的队列没有任何关系的.
         let ioQueueName = "com.Tiercel.Cache.ioQueue.\(identifier)"
         ioQueue = DispatchQueue(label: ioQueueName, autoreleaseFrequency: .workItem)
         
@@ -52,6 +54,7 @@ public class Cache {
         // 这个东西, 就是在外界没有传入下载地址的时候, 当做 Download 的默认值.
         let diskCachePath = Cache.defaultDiskCachePathClosure(cacheName)
         
+        // temp, file 是 downloadPath 的下级.
         let downloadPath = downloadPath ?? (diskCachePath as NSString).appendingPathComponent("Downloads")
         self.downloadPath = downloadPath
         self.downloadTmpPath = downloadTmpPath ?? (downloadPath as NSString).appendingPathComponent("Tmp")
@@ -72,6 +75,7 @@ public class Cache {
 
 // MARK: - file
 extension Cache {
+    // 预先创建所需要的目录结构.
     internal func createDirectory() {
         if !fileManager.fileExists(atPath: downloadPath) {
             do {
@@ -177,8 +181,10 @@ extension Cache {
                     let data = try Data(contentsOf: url)
                     let tasks = try decoder.decode([DownloadTask].self, from: data)
                     tasks.forEach { (task) in
+                        // 既然这里, 又进行了赋值操作, 那么 Task 里面的 cache 根本就不应该参与到归档解档的流程里面.
                         task.cache = self
                         if task.status == .waiting  {
+                            // 不太明白, 为什么将解档会生成的 Task 的状态进行改变.
                             task.protectedState.write { $0.status = .suspended }
                         }
                     }
@@ -195,6 +201,8 @@ extension Cache {
     
     /*
      下载, 系统默认的是下载到了 Tmp 目录下, 而这个目录, 会被系统清理的.
+     这件事在 iOS 15 里感觉发生了变化, 路径变为了 /Library/Caches/com.apple.nsurlsessiond/Downloads/bundlename 了
+     
      所以, 在 storeTmpFile 中, 会将 Tmp 目录下的数据, 转存一份到沙盒环境里面.
      这里, 当使用 ResumeData 恢复下载的时候, 会尝试检查 Temp 下有没有下载文件.
      如果没有, 会使用沙盒中缓存的文件, 移动到 Temp 中. 因为 ResumeData 的数据是定死的, 所以一定是要移动到 Temp 目录下.
@@ -233,18 +241,18 @@ extension Cache {
 }
 
 /*
- // 在里面, 是将当前的状态也存储到了文件系统里面. 
-"super": {
-     "url": "https:\/\/officecdn-microsoft-com.akamaized.net\/pr\/C1297A47-86C4-4C1F-97FA-950631F94777\/MacAutoupdate\/Microsoft_Office_16.24.19041401_Installer.pkg",
-     "status": "running",
-     "endDate": 0,
-     "fileName": "66ad306db5e053544041f8b64cdfbaac.pkg",
-     "startDate": 1658079710.3194971,
-     "verificationType": 0,
-     "totalBytes": 1761188833,
-     "completedBytes": 3069533,
-     "validation": 0,
-     "currentURL": "https:\/\/officecdn-microsoft-com.akamaized.net\/pr\/C1297A47-86C4-4C1F-97FA-950631F94777\/MacAutoupdate\/Microsoft_Office_16.24.19041401_Installer.pkg"
+ // 在里面, 是将当前的状态也存储到了文件系统里面.
+ "super": {
+ "url": "https:\/\/officecdn-microsoft-com.akamaized.net\/pr\/C1297A47-86C4-4C1F-97FA-950631F94777\/MacAutoupdate\/Microsoft_Office_16.24.19041401_Installer.pkg",
+ "status": "running",
+ "endDate": 0,
+ "fileName": "66ad306db5e053544041f8b64cdfbaac.pkg",
+ "startDate": 1658079710.3194971,
+ "verificationType": 0,
+ "totalBytes": 1761188833,
+ "completedBytes": 3069533,
+ "validation": 0,
+ "currentURL": "https:\/\/officecdn-microsoft-com.akamaized.net\/pr\/C1297A47-86C4-4C1F-97FA-950631F94777\/MacAutoupdate\/Microsoft_Office_16.24.19041401_Installer.pkg"
  },
  */
 // MARK: - store

@@ -12,6 +12,7 @@ extension SessionDelegate: URLSessionDownloadDelegate {
      */
     public func urlSession(_ session: URLSession, didBecomeInvalidWithError error: Error?) {
         manager?.didBecomeInvalidation(withError: error)
+        print(#function)
     }
     
     /*
@@ -32,9 +33,14 @@ extension SessionDelegate: URLSessionDownloadDelegate {
      */
     public func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
         manager?.didFinishEvents(forBackgroundURLSession: session)
+        print(#function)
     }
     
     // 下载过程的回调.
+    /*
+     当下载过程中, App 退到后台, 这个时候 Delegate 方法不会继续被调用.
+     如果不是用户手动杀死 App, 那么真正的下载任务, 还是在不断的触发的, 是在单独的进程中. 当 App 重新启动, 或者切换到前台之后, 还是可以接收到, Delegate 方法对应的回调的. 
+     */
     public func urlSession(_ session: URLSession,
                            downloadTask: URLSessionDownloadTask,
                            didWriteData bytesWritten: Int64,
@@ -49,6 +55,7 @@ extension SessionDelegate: URLSessionDownloadDelegate {
             return
         }
         task.didWriteData(downloadTask: downloadTask, bytesWritten: bytesWritten, totalBytesWritten: totalBytesWritten, totalBytesExpectedToWrite: totalBytesExpectedToWrite)
+        print(String(downloadTask.taskIdentifier) + " " + #function)
     }
     
     // 下载完成的回调.
@@ -63,9 +70,11 @@ extension SessionDelegate: URLSessionDownloadDelegate {
             return
         }
         task.didFinishDownloading(task: downloadTask, to: location)
+        print(String(downloadTask.taskIdentifier) + " " + #function)
     }
     
     // 下载结束的回调.
+    // 如果下载过程中, 强杀 App, 再次启动之后, 会触发到这里. 也就是说, 现有的下载任务是被当做了失败进行了处理.
     public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let manager = manager else { return }
         
@@ -87,5 +96,6 @@ extension SessionDelegate: URLSessionDownloadDelegate {
         }
         // downloadTask.didComplete(.network(task: task, error: error))
         // 最终都是触发该方法, 不过是 URL 的获取方式不同而已.
+        print(String(task.taskIdentifier) + " " + #function)
     }
 }

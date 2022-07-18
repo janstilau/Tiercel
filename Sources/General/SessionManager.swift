@@ -209,8 +209,10 @@ public class SessionManager {
         self.operationQueue = operationQueue
         self.cache = cache ?? Cache(identifier)
         self.cache.manager = self
+        
         // 在这里, 将所有的任务都从文件系统中恢复了.
         self.cache.retrieveAllTasks().forEach { maintainTasks(with: .append($0)) }
+        
         succeededTasks = tasks.filter { $0.status == .succeeded }
         protectedState.write { state in
             state.tasks.forEach {
@@ -394,6 +396,7 @@ extension SessionManager {
             }
             storeTasks()
             Executer(onMainQueue: onMainQueue, handler: handler).execute(self)
+            // 将, 刚刚添加进入的所有的任务, 一次性开启下载操作.
             operationQueue.async {
                 uniqueTasks.forEach {
                     if $0.status != .succeeded {
