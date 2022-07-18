@@ -1,6 +1,14 @@
 import UIKit
 
 public class SessionManager {
+    /*
+     添加下载任务, 和添加正在下载的任务是不同的.
+     添加任务, 是将任务添加到备用下载任务中. 还没有真正的开启.
+     添加正在下载的任务, 是真正的开始进行了下载, 这是在 Task 真正开启下载过程的时候, 会触发 appendRunningTasks
+     success 是 下载成功了, Task 真正下载成功的时候, 会触发 succeeded
+     删除正在下载的任务, 是任务结束下载的时候触发. removeRunningTasks
+     删除任务, 是用户主动点击了 cancel, 或者 remove 的时候触发.
+     */
     enum MaintainTasksAction {
         case append(DownloadTask)
         case remove(DownloadTask)
@@ -191,8 +199,6 @@ public class SessionManager {
         set { protectedState.write { $0.controlExecuter = newValue } }
     }
     
-    
-    
     public init(_ identifier: String,
                 configuration: SessionConfiguration,
                 logger: Logable? = nil,
@@ -211,6 +217,8 @@ public class SessionManager {
         self.cache.manager = self
         
         // 在这里, 将所有的任务都从文件系统中恢复了.
+        // append 仅仅是将, 任务添加到 SessionManager 进行管理, 但是并不会直接进行触发 Task 的 resume.
+        // 如果, 下载进程还存在, 那么对应的 Session Delegate 会继续触发, 否则, 这里是需要手动的进行停止的下载任务 Resume 才可以.
         self.cache.retrieveAllTasks().forEach { maintainTasks(with: .append($0)) }
         
         succeededTasks = tasks.filter { $0.status == .succeeded }
@@ -239,7 +247,6 @@ public class SessionManager {
         cache.invalidate()
         invalidateTimer()
     }
-    
     
     private func createSession(_ completion: (() -> ())? = nil) {
         guard shouldCreatSession else { return }
@@ -270,7 +277,9 @@ public class SessionManager {
         let sessionDelegate = SessionDelegate()
         sessionDelegate.manager = self
         // 网络请求的事件, 都是使用的串行队列. 因为本身这就是一个有着时间先后的事件处理机制.
-        // 如果使用并发队列, data 来临后, 后续的 data 事件在前面的闭包事件中被处理了, 那么拼接数据的时候, 就出错了. 
+        // 如果使用并发队列, data 来临后, 后续的 data 事件在前面的闭包事件中被处理了, 那么拼接数据的时候, 就出错了.
+        
+        // 所有的网络回调, 都在一个队列中完成.
         let delegateQueue = OperationQueue(maxConcurrentOperationCount: 1,
                                            underlyingQueue: operationQueue,
                                            name: "com.Tiercel.SessionManager.delegateQueue")
@@ -324,6 +333,7 @@ extension SessionManager {
                     task.session = session
                     maintainTasks(with: .append(task))
                 }
+                // 在对应的地方, 进行维护任务的序列化处理.
                 storeTasks()
                 start(task, onMainQueue: onMainQueue, handler: handler)
             }
@@ -572,6 +582,7 @@ extension SessionManager {
 }
 
 // MARK: - total tasks control
+// Total 的行为, 就是将 tasks 相关的任务, 进行遍历.
 extension SessionManager {
     // 全部开始下载任务.
     public func totalStart(onMainQueue: Bool = true, handler: Handler<SessionManager>? = nil) {
@@ -684,12 +695,18 @@ extension SessionManager {
         if self.tasks.isEmpty {
             return
         }
+        /*
+         之所以会出现这样一个奇怪的调用, 是因为真正的下载任务, 是在另外的一个线程里面.
+         当 App 重启之后, 同名的 Session 可以通过 getTasksWithCompletionHandler 获取到当前正在下载的任务.
+         所以, 在 App 重启之后, 可以第一时间, 根据当前的状态, 进行
+         */
         session?.getTasksWithCompletionHandler { [weak self] (dataTasks, uploadTasks, downloadTasks) in
             guard let self = self else { return }
             downloadTasks.forEach { downloadTask in
                 if downloadTask.state == .running,
                    let currentURL = downloadTask.currentRequest?.url,
                    let task = self.mapTask(currentURL) {
+                    // didStart 是触发 Manager 开始下载的回调.
                     self.didStart()
                     self.maintainTasks(with: .appendRunningTasks(task))
                     task.status = .running
@@ -777,7 +794,7 @@ extension SessionManager {
     }
     
     // DownloadTask 里面, 会触发 Manager 的 Schedule 的操作.
-    internal func reSchedule(fromDownloading: Bool) {
+    internal func reScheduleWhenTaskComplete(fromDownloading: Bool) {
         if isControlNetworkActivityIndicator {
             DispatchQueue.tr.executeOnMain {
                 UIApplication.shared.isNetworkActivityIndicatorVisible = false
@@ -786,6 +803,9 @@ extension SessionManager {
         
         // removed
         if status == .willRemove {
+            // 当, 调用 totalRemove 的时候, 会将当前的状态, 设置为 willRemove
+            // 然后会不断的调用 Task 的 Remove 方法.
+            // 当 Task 完成了 Remove 操作之后, 会回到该方法. 完成镇针对各 Remvoed 状态的改变.
             if tasks.isEmpty {
                 status = .removed
                 executeControl()
@@ -797,6 +817,7 @@ extension SessionManager {
         // canceled
         if status == .willCancel {
             let succeededTasksCount = protectedState.wrappedValue.taskMapper.values.count
+            // 这个时候, 只会存留 success, 或者 failed 的任务了.
             if tasks.count == succeededTasksCount {
                 status = .canceled
                 executeControl()
@@ -865,6 +886,7 @@ extension SessionManager {
         invalidateTimer()
     }
     
+    // 在做完上面所有的操作之后, 进行新的任务的下载.
     private func startNextTask() {
         guard let waitingTask = tasks.first (where: { $0.status == .waiting }) else { return }
         waitingTask.download()
@@ -876,6 +898,7 @@ extension SessionManager {
     
     static let refreshInterval: Double = 1
     
+    // 这个 Timer, 感觉没有太大的作用啊.
     private func createTimer() {
         if timer == nil {
             timer = DispatchSource.makeTimerSource(flags: .strict, queue: operationQueue)

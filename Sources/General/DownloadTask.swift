@@ -381,7 +381,7 @@ extension DownloadTask {
         }
         validateFile()
         manager?.maintainTasks(with: .succeeded(self))
-        manager?.reSchedule(fromDownloading: fromDownloading)
+        manager?.reScheduleWhenTaskComplete(fromDownloading: fromDownloading)
     }
     
     private func determineStatusWhenDownloadFailed(with interruptType: InterruptType) {
@@ -432,7 +432,7 @@ extension DownloadTask {
             executeCompletion(false)
         }
         
-        manager?.reSchedule(fromDownloading: fromRunning)
+        manager?.reScheduleWhenTaskComplete(fromDownloading: fromRunning)
     }
 }
 

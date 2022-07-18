@@ -50,7 +50,7 @@ extension ViewController2 {
         sessionManager.download(URLString) { [weak self] _ in
             guard let self = self else { return }
             let index = self.sessionManager.tasks.count - 1
-//            self.tableView.insertRows(at: [IndexPath(row: index, section: 0)], with: .automatic)
+            self.tableView.insertRows(at: [IndexPath(row: index, section: 0)], with: .automatic)
             self.tableView.reloadData()
             self.updateViews()
         }

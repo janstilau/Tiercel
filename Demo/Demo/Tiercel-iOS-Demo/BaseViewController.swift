@@ -35,6 +35,7 @@ class BaseViewController: UIViewController {
         sessionManager.logger.option = .default
         
         updateSwicth()
+        setupUI()
     }
     
     func setupUI() {
@@ -153,7 +154,6 @@ extension BaseViewController: UITableViewDataSource, UITableViewDelegate {
     
     // 每个 cell 中的状态更新，应该在 willDisplay 中执行
     func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
-        
         guard let task = sessionManager.tasks.safeObject(at: indexPath.row),
               let cell = cell as? DownloadTaskCell
         else { return }
@@ -184,7 +184,6 @@ extension BaseViewController: UITableViewDataSource, UITableViewDelegate {
         .success { [weak cell] (task) in
             cell?.updateProgress(task)
             // 下载任务成功了
-            
         }
         .failure { [weak cell] task in
             cell?.updateProgress(task)
@@ -226,5 +225,4 @@ extension BaseViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
     }
-    
 }
