@@ -159,13 +159,13 @@ extension DownloadTask {
             // 所以, fileExist 一定是下载成功了.
             // 之所以会有这种情况, 是因为可能会有重复的下载任务
             if cache.fileExists(fileName: fileName) {
-                reset()
+                resetForDownloading()
                 didFileExisted()
             } else {
                 if manager.shouldRun {
                     // 当前还没有触发最大下载数
                     // 真正的触发下载网络请求的部分.
-                    reset()
+                    resetForDownloading()
                     startDownloadFile()
                 } else {
                     // 当前已经到达了最大下载数
@@ -185,7 +185,7 @@ extension DownloadTask {
         }
     }
     
-    private func reset() {
+    private func resetForDownloading() {
         status = .running
         protectedState.write {
             $0.speed = 0
@@ -290,6 +290,10 @@ extension DownloadTask {
         controlExecuter = Executer(onMainQueue: onMainQueue, handler: handler)
         if status == .running {
             status = .willCancel
+            /*
+             This method returns immediately, marking the task as being canceled. Once a task is marked as being canceled, urlSession(_:task:didCompleteWithError:) will be sent to the task delegate, passing an error in the domain NSURLErrorDomain with the code NSURLErrorCancelled. A task may, under some circumstances, send messages to its delegate before the cancelation is acknowledged.
+             This method may be called on a task that is suspended.
+             */
             sessionTask?.cancel()
         } else {
             status = .willCancel
@@ -304,6 +308,8 @@ extension DownloadTask {
         controlExecuter = Executer(onMainQueue: onMainQueue, handler: handler)
         if status == .running {
             status = .willRemove
+            // Remove 和 cancel 是一样的, 都是停止下载.
+            // 但是 Remvoe 会有后续的删除文件的操作.
             sessionTask?.cancel()
         } else {
             status = .willRemove
@@ -352,18 +358,6 @@ extension DownloadTask {
 
 // MARK: - status handle
 extension DownloadTask {
-    private func didCancelOrRemove() {
-        // 把预操作的状态改成完成操作的状态
-        if status == .willCancel {
-            status = .canceled
-        }
-        if status == .willRemove {
-            status = .removed
-        }
-        cache.remove(self, completely: isRemoveCompletely)
-        manager?.didCancelOrRemove(self)
-    }
-    
     // FromRunning 指的是, 从正在运行的网络任务中成功了.
     internal func didTaskSuccessed(fromDownloading: Bool, triggerCompletion: Bool) {
         if endDate == 0 {
@@ -397,6 +391,7 @@ extension DownloadTask {
             /*
              When a transfer error occurs or when you call the cancel(byProducingResumeData:) method, the delegate object or completion handler gets an NSError object. If the transfer is resumable, that error object’s userInfo dictionary contains a value for this key. To resume the transfer, your app can pass that value to the downloadTask(withResumeData:) or downloadTask(withResumeData:completionHandler:) method.
              */
+            // 统一在这里完成 Resume data 的获取.
             if let resumeData = (error as NSError).userInfo[NSURLSessionDownloadTaskResumeData] as? Data {
                 // 在这里, 进行了 ResumeData 的存储动作.
                 self.resumeData = ResumeDataHelper.handleResumeData(resumeData)
@@ -437,6 +432,18 @@ extension DownloadTask {
         }
         
         manager?.reScheduleWhenTaskComplete(fromDownloading: fromRunning)
+    }
+    
+    private func didCancelOrRemove() {
+        // 把预操作的状态改成完成操作的状态
+        if status == .willCancel {
+            status = .canceled
+        }
+        if status == .willRemove {
+            status = .removed
+        }
+        cache.remove(self, completely: isRemoveCompletely)
+        manager?.didCancelOrRemove(self)
     }
 }
 
