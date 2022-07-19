@@ -100,8 +100,7 @@ public class Task<TaskType>: NSObject, Codable {
         }
     }
     
-    internal func execute(_ Executer: Executer<TaskType>?) {
-    }
+    internal func execute(_ Executer: Executer<TaskType>?) { }
 }
 
 extension Task {

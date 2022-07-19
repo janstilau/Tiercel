@@ -82,7 +82,7 @@ extension SessionDelegate: URLSessionDownloadDelegate {
             guard let downloadTask = manager.mapTask(currentURL) else {
                 return
             }
-            downloadTask.didComplete(.network(task: task, error: error))
+            downloadTask.didTaskCompleted(.network(task: task, error: error))
         } else {
             if let error = error {
                 if let urlError = error as? URLError,
@@ -90,7 +90,7 @@ extension SessionDelegate: URLSessionDownloadDelegate {
                     guard let downloadTask = manager.mapTask(errorURL) else {
                         return
                     }
-                    downloadTask.didComplete(.network(task: task, error: error))
+                    downloadTask.didTaskCompleted(.network(task: task, error: error))
                 }
             }
         }

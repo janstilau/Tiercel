@@ -321,7 +321,7 @@ extension Cache {
     }
     
     // 如果已经下载完了, 那么就会做一个文件的搬移动作.
-    // 没有的话, 下载完成之后, 搬移 temp 文件的时候, 会使用新的名称来当做文件的名称. 
+    // 没有的话, 下载完成之后, 搬移 temp 文件的时候, 会使用新的名称来当做文件的名称.
     internal func updateFileName(_ filePath: String, _ newFileName: String) {
         ioQueue.sync {
             if fileManager.fileExists(atPath: filePath) {

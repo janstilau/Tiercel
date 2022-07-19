@@ -81,7 +81,7 @@ class BaseViewController: UIViewController {
     
     func setupManager() {
         
-        // 设置 manager 的回调
+        // 这些都仅仅是在收集回调而已.
         sessionManager.progress { [weak self] (manager) in
             self?.updateViews()
         }.completion { [weak self] manager in

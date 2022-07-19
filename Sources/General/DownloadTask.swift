@@ -149,9 +149,8 @@ extension DownloadTask {
 extension DownloadTask {
     
     internal func download() {
-        // 这里创建的, 是整的 Session 的目录.
-        // Task, 仅仅是里面, 创建了一个文件而已. 
         cache.createDirectory()
+        
         guard let manager = manager else { return }
         
         switch status {
@@ -161,14 +160,15 @@ extension DownloadTask {
             // 之所以会有这种情况, 是因为可能会有重复的下载任务
             if cache.fileExists(fileName: fileName) {
                 reset()
-                startDownload(fileExists: true)
+                didFileExisted()
             } else {
-                // shouldRun 中有着对于最大并发数的考虑. 所以实际上, 还是不会超过最大并发数的. 
                 if manager.shouldRun {
-                    reset()
+                    // 当前还没有触发最大下载数
                     // 真正的触发下载网络请求的部分.
-                    startDownload(fileExists: false)
+                    reset()
+                    startDownloadFile()
                 } else {
+                    // 当前已经到达了最大下载数
                     // 在 Task 完成的代码里面, 会触发 manager 的 reSchedule. 在那里会触发 waiting 状态的任务重新开启.
                     status = .waiting
                     progressExecuter?.execute(self)
@@ -177,7 +177,7 @@ extension DownloadTask {
             }
         case .succeeded:
             executeControl()
-            didSucceeded(fromDownloading: false, triggerCompletion: false)
+            didTaskSuccessed(fromDownloading: false, triggerCompletion: false)
         case .running:
             status = .running
             executeControl()
@@ -197,51 +197,51 @@ extension DownloadTask {
         response = nil
     }
     
-    private func startDownload(fileExists: Bool) {
-        if fileExists {
-            if let fileInfo = try? FileManager.default.attributesOfItem(atPath: cache.filePath(fileName: fileName)!),
-               let length = fileInfo[.size] as? Int64 {
-                progress.totalUnitCount = length
-            }
-            executeControl()
-            operationQueue.async {
-                // 开启下载任务的时候, 发现该文件已经下载过了.
-                // 直接本地完成该任务.
-                self.didComplete(.local)
+    private func startDownloadFile() {
+        // 真正的开启一个下载任务的启动方法在这里.
+        // 如果, 有resumeData这个值, 那么
+        if let resumeData = resumeData,
+           // 如果有 ResumeData, 首先要恢复原来的下载环境, 具体来说, 就是将原本的下载到 Tmp 目录下的文件数据恢复.
+           cache.retrieveTmpFile(tmpFileName) {
+            // retrieveTmpFile 中, 会尝试进行已经下载数据的恢复.
+            if #available(iOS 10.2, *) {
+                sessionTask = session?.downloadTask(withResumeData: resumeData)
+            } else if #available(iOS 10.0, *) {
+                sessionTask = session?.correctedDownloadTask(withResumeData: resumeData)
+            } else {
+                sessionTask = session?.downloadTask(withResumeData: resumeData)
             }
         } else {
-            // 真正的开启一个下载任务的启动方法在这里.
-            // 如果, 有resumeData这个值, 那么
-            if let resumeData = resumeData,
-               // 如果有 ResumeData, 首先要恢复原来的下载环境, 具体来说, 就是将原本的下载到 Tmp 目录下的文件数据恢复.
-               cache.retrieveTmpFile(tmpFileName) {
-                // retrieveTmpFile 中, 会尝试进行已经下载数据的恢复.
-                if #available(iOS 10.2, *) {
-                    sessionTask = session?.downloadTask(withResumeData: resumeData)
-                } else if #available(iOS 10.0, *) {
-                    sessionTask = session?.correctedDownloadTask(withResumeData: resumeData)
-                } else {
-                    sessionTask = session?.downloadTask(withResumeData: resumeData)
-                }
-            } else {
-                // 没有 resume 的数据, 直接重新下.
-                var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 0)
-                // header 的作用, 在这里被用到了.
-                if let headers = headers {
-                    request.allHTTPHeaderFields = headers
-                }
-                sessionTask = session?.downloadTask(with: request)
-                progress.completedUnitCount = 0
-                progress.totalUnitCount = 0
+            // 没有 resume 的数据, 直接重新下.
+            var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 0)
+            // header 的作用, 在这里被用到了.
+            if let headers = headers {
+                request.allHTTPHeaderFields = headers
             }
-            
-            // 真正的, 进行下载任务的开启.
-            progress.setUserInfoObject(progress.completedUnitCount, forKey: .fileCompletedCountKey)
-            // 在这里, 真正的进行了下载的任务启动. 
-            sessionTask?.resume()
-            manager?.maintainTasks(with: .appendRunningTasks(self))
-            manager?.storeTasks()
-            executeControl()
+            sessionTask = session?.downloadTask(with: request)
+            progress.completedUnitCount = 0
+            progress.totalUnitCount = 0
+        }
+        
+        // 真正的, 进行下载任务的开启.
+        progress.setUserInfoObject(progress.completedUnitCount, forKey: .fileCompletedCountKey)
+        // 在这里, 真正的进行了下载的任务启动.
+        sessionTask?.resume()
+        manager?.maintainTasks(with: .appendRunningTasks(self))
+        manager?.storeTasks()
+        executeControl()
+    }
+    
+    private func didFileExisted() {
+        if let fileInfo = try? FileManager.default.attributesOfItem(atPath: cache.filePath(fileName: fileName)!),
+           let length = fileInfo[.size] as? Int64 {
+            progress.totalUnitCount = length
+        }
+        executeControl()
+        operationQueue.async {
+            // 开启下载任务的时候, 发现该文件已经下载过了.
+            // 直接本地完成该任务.
+            self.didTaskCompleted(.local)
         }
     }
     
@@ -280,7 +280,7 @@ extension DownloadTask {
             status = .willSuspend
             // 如果, 当前任务还没有开启, 直接本地完成.
             operationQueue.async {
-                self.didComplete(.local)
+                self.didTaskCompleted(.local)
             }
         }
     }
@@ -294,7 +294,7 @@ extension DownloadTask {
         } else {
             status = .willCancel
             operationQueue.async {
-                self.didComplete(.local)
+                self.didTaskCompleted(.local)
             }
         }
     }
@@ -308,7 +308,7 @@ extension DownloadTask {
         } else {
             status = .willRemove
             operationQueue.async {
-                self.didComplete(.local)
+                self.didTaskCompleted(.local)
             }
         }
     }
@@ -365,7 +365,7 @@ extension DownloadTask {
     }
     
     // FromRunning 指的是, 从正在运行的网络任务中成功了.
-    internal func didSucceeded(fromDownloading: Bool, triggerCompletion: Bool) {
+    internal func didTaskSuccessed(fromDownloading: Bool, triggerCompletion: Bool) {
         if endDate == 0 {
             protectedState.write {
                 // 成功了, 进行完成事件的赋值.
@@ -388,7 +388,7 @@ extension DownloadTask {
         manager?.reScheduleWhenTaskComplete(fromDownloading: fromDownloading)
     }
     
-    private func determineStatusWhenDownloadFailed(with interruptType: InterruptType) {
+    private func didTaskFailed(with interruptType: InterruptType) {
         var fromRunning = true
         switch interruptType {
         case let .error(error):
@@ -463,7 +463,7 @@ extension DownloadTask {
                     $0.verificationCode = code
                     $0.verificationType = type
                 }
-//                self.manager?.storeTasks()
+                //                self.manager?.storeTasks()
             }
             // ValidateFile 这段代码, 最终还是添加逻辑到对应的时间节点中, 然后在对应的时候, 取出相应的节点, 进行逻辑回调的触发.
             self.validateExecuter = Executer(onMainQueue: onMainQueue, handler: handler)
@@ -490,8 +490,9 @@ extension DownloadTask {
     /*
      executeControl 的设计思路是, 我要去完成一件事, 并且提供这件事完成的回调.
      但是我要完成的这件事, 其实是一个异步操作.
-     所以, 作者在这里设计了 controlExecuter 这样的一个存储闭包的方式, 统一在 Task 的 DetermineStatus 的回调里面, 进行 executeControl 的触发.
+     所以, 作者在这里设计了 controlExecuter 这样的一个存储闭包的方式, 统一在 Task 完成逻辑里面进行 executeControl 的触发.
      */
+    // executeControl 就是触发用户设置的业务回调. 如果需要异步操作, 那么就在异步操作中触发, 如果不需要, 直接触发.
     private func executeControl() {
         controlExecuter?.execute(self)
         controlExecuter = nil
@@ -515,7 +516,6 @@ extension DownloadTask {
 extension DownloadTask {
     
     internal func updateSpeedAndTimeRemaining() {
-        
         let dataCount = progress.completedUnitCount
         let lastCompleteCount: Int64 = progress.userInfo[.fileCompletedCountKey] as? Int64 ?? 0
         
@@ -548,7 +548,7 @@ extension DownloadTask {
 
 // MARK: - callback
 extension DownloadTask {
-    // SessionDelegate 会触发到这里, 在这里, 触发一下自己的下载总进度. 
+    // SessionDelegate 会触发到这里, 在这里, 触发一下自己的下载总进度.
     internal func didWriteData(downloadTask: URLSessionDownloadTask, bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
         // 更新一下自己的进度信息.
         progress.completedUnitCount = totalBytesWritten
@@ -561,29 +561,28 @@ extension DownloadTask {
         NotificationCenter.default.postNotification(name: DownloadTask.runningNotification, downloadTask: self)
     }
     
-    // 在下载完成的回调里面, 是完成了文件的移动工作. 
+    // 在下载完成的回调里面, 是完成了文件的移动工作.
     internal func didFinishDownloading(task: URLSessionDownloadTask, to location: URL) {
         guard let statusCode = (task.response as? HTTPURLResponse)?.statusCode,
               acceptableStatusCodes.contains(statusCode)
         else { return }
         // 将, 下载过程中, Tmp 目录下的文件, 转移到真正的存储目录下.
-        // 然后, 清理一下下载过程中的临时文件.  
+        // 然后, 清理一下下载过程中的临时文件.
         cache.storeFile(at: location, to: URL(fileURLWithPath: filePath))
         cache.removeTmpFile(tmpFileName)
     }
     
-    internal func didComplete(_ type: CompletionType) {
+    internal func didTaskCompleted(_ type: CompletionType) {
         switch type {
         case .local: // 有程序逻辑, 引起了 Complete 的逻辑触发.
             switch status {
             case .willSuspend, .willCancel, .willRemove:
-                determineStatusWhenDownloadFailed(with: .manual(false))
+                didTaskFailed(with: .manual(false))
             case .running:
-                didSucceeded(fromDownloading: false, triggerCompletion: true)
+                didTaskSuccessed(fromDownloading: false, triggerCompletion: true)
             default:
                 return
             }
-            
             // 这种场景, 仅仅会在 Session 的 Delegate 中出现.
             // ResumeData 的数据, 也是从 Error 中获取出来的.
         case let .network(task, error):
@@ -595,7 +594,7 @@ extension DownloadTask {
             case .willCancel, .willRemove:
                 // 当 Cancel, Remove 主动调用的时候, 不会直接触发, 而是使用 DataTask 的 cancel 方法, 等待 URLSession 的 Delegate 触发到这里.
                 // 如果当前的状态, 是以上两种, 就是用户主动行为.
-                determineStatusWhenDownloadFailed(with: .manual(true))
+                didTaskFailed(with: .manual(true))
                 return
             case .willSuspend, .running:
                 progress.totalUnitCount = task.countOfBytesExpectedToReceive
@@ -607,13 +606,13 @@ extension DownloadTask {
                 
                 if error != nil {
                     response = task.response as? HTTPURLResponse
-                    determineStatusWhenDownloadFailed(with: .error(error!))
+                    didTaskFailed(with: .error(error!))
                 } else if !isAcceptable {
                     response = task.response as? HTTPURLResponse
-                    determineStatusWhenDownloadFailed(with: .statusCode(statusCode))
+                    didTaskFailed(with: .statusCode(statusCode))
                 } else {
                     resumeData = nil
-                    didSucceeded(fromDownloading: true, triggerCompletion: true)
+                    didTaskSuccessed(fromDownloading: true, triggerCompletion: true)
                 }
             default:
                 return

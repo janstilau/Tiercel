@@ -150,7 +150,6 @@ public class SessionManager {
         }
     }
     
-    
     public private(set) var tasks: [DownloadTask] {
         get { protectedState.wrappedValue.tasks }
         set { protectedState.write { $0.tasks = newValue } }
@@ -218,6 +217,7 @@ public class SessionManager {
         set { protectedState.write { $0.completionExecuter = newValue } }
     }
     
+    // totalAction 中, 会给 controlExecuter 进行赋值. 在完成了对应操作之后, 会调用存储的闭包.
     private var controlExecuter: Executer<SessionManager>? {
         get { protectedState.wrappedValue.controlExecuter }
         set { protectedState.write { $0.controlExecuter = newValue } }
@@ -428,6 +428,8 @@ extension SessionManager {
                                         operationQueue: operationQueue)
                     task.manager = self
                     task.session = session
+                    // 其实应该这里就是收集动作 也就是添加到 uniqueTasks 里面就好了.
+                    // 不要在过程中, 执行带有副作用的代码.
                     maintainTasks(with: .append(task))
                 }
                 uniqueTasks.append(task)
@@ -478,6 +480,7 @@ extension SessionManager {
         }
     }
     
+    // 各种操作, 都是交给了队列. 所以, 各种操作, 仅仅是提交任务.
     public func start(_ task: DownloadTask, onMainQueue: Bool = true, handler: Handler<DownloadTask>? = nil) {
         operationQueue.async {
             guard let _ = self.fetchTask(task.url) else {
@@ -511,7 +514,10 @@ extension SessionManager {
         }
     }
     
-    
+    /*
+     除了添加动作, Cancle, Remove, Suspend 都是找到对应的 task, 然后触发 task 的相关方法.
+     因为网络的各种操作, 仅仅是请求操作. 真正可以发生改变, 是带回调方法里面. 所以对于 SessionManager 来说, 他对于 task 的管理, 是建立在 task 的各种 timing 点, 主动调用 manager 的方法来实现的.
+     */
     /// 暂停任务，会触发sessionDelegate的完成回调
     public func suspend(_ url: URLConvertible, onMainQueue: Bool = true, handler: Handler<DownloadTask>? = nil) {
         operationQueue.async {
@@ -745,7 +751,9 @@ extension SessionManager {
                 }
             }
             self.storeTasks()
-            //  处理mananger状态
+            
+            // 这两个函数的意思, 其实是根据初始化的时候的任务状态, 来决定 session Manager 的 status 是 complete, failed, 还是 suspend.
+            // 应该拆分出四个函数出来. 目前这种, get 函数里面包含着数据修改的逻辑, 使得这两个函数, 完全没有复用的可能性.
             if !self.isAllCompleted() {
                 self.suspendIfNeed()
             }
@@ -755,9 +763,9 @@ extension SessionManager {
     // get 函数内, 有了太多的副作用.
     private func isAllCompleted() -> Bool {
         let isSucceeded = self.tasks.allSatisfy { $0.status == .succeeded }
-        let isCompleted = isSucceeded ? isSucceeded :
+        let isAllTaskEnded = isSucceeded ? isSucceeded :
         self.tasks.allSatisfy { $0.status == .succeeded || $0.status == .failed }
-        guard isCompleted else { return false }
+        guard isAllTaskEnded else { return false }
         
         if status == .succeeded || status == .failed {
             return true
@@ -781,10 +789,6 @@ extension SessionManager {
             status = .suspended
             executeControl()
             executeCompletion(false)
-            if currentURLSessionIsDirty {
-                session?.invalidateAndCancel()
-                session = nil
-            }
         }
     }
     
@@ -806,10 +810,10 @@ extension SessionManager {
         NotificationCenter.default.postNotification(name: SessionManager.runningNotification, sessionManager: self)
     }
     
+    // 在 task 里面, 主动调用该函数.
     internal func didCancelOrRemove(_ task: DownloadTask) {
         maintainTasks(with: .remove(task))
         
-        // 没太明白这里的逻辑. ???
         if tasks.isEmpty {
             if task.status == .canceled {
                 status = .willCancel
@@ -976,7 +980,7 @@ extension SessionManager {
         }
     }
     
-    internal func log(_ type: LogType) {
+    internal func log(_ type: LogContent) {
         logger.log(type)
     }
 }
@@ -1051,7 +1055,9 @@ extension SessionManager {
 
 // MARK: - call back
 extension SessionManager {
-    // 没太明白这里在干什么.
+    /*
+     invalidateAndCancel 被调用后, 会到这里.
+     */
     internal func didBecomeInvalidation(withError error: Error?) {
         createSession { [weak self] in
             guard let self = self else { return }
@@ -1060,7 +1066,7 @@ extension SessionManager {
         }
     }
     
-    // 这个就是
+    // 当 Session 相关联的下载任务, 响应事件都触发到 Session Delegate 之后, 会触发到这里.
     internal func didFinishEvents(forBackgroundURLSession session: URLSession) {
         // 必须在主线程调用. 文档里面明确进行了说明.
         DispatchQueue.tr.executeOnMain {

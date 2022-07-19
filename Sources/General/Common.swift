@@ -5,7 +5,7 @@ public enum LogOption {
     case none // 选择该值, 可以打断 Logger 的所有 Log 行为. 
 }
 
-public enum LogType {
+public enum LogContent {
     case sessionManager(_ message: String, manager: SessionManager)
     case downloadTask(_ message: String, task: DownloadTask)
     case error(_ message: String, error: Error)
@@ -16,7 +16,7 @@ public protocol Logable {
     
     var option: LogOption { get set }
     
-    func log(_ type: LogType)
+    func log(_ type: LogContent)
 }
 
 public struct Logger: Logable {
@@ -25,7 +25,7 @@ public struct Logger: Logable {
     
     public var option: LogOption
     
-    public func log(_ type: LogType) {
+    public func log(_ type: LogContent) {
         // 如果不需要 Log, 直接这里改动就好了,
         guard option == .default else { return }
         
